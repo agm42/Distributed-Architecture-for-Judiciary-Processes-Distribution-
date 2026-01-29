@@ -1,23 +1,19 @@
 /***************************************************************************
-	CSC-27 / CE-288 - ITA - 2025, 2º sem. - Profs. Hirata and Juliana
+        Distributed Architecture for Judiciary Processes Distribution
+        ===== District Agent ====
 
-	LabExam - Simulador de Tribunal de Justiça Descentralizado
+        Authors:
+                Antonio Gilberto de Moura (A - AGM)
+                Fernado Maurício Gomes (F - FMG)
 
-	Students: 
-	        Antonio Gilberto de Moura (A - AGM)
-			Fernado Maurício Gomes (F - FMG)
-			Rodrigo Freire dos Santos Alencar (R - RFA)
-
-        Rel 1.0.0
-
-        Copyright (c) 2025 by A/F/R.
-        All Rights Reserved.
+        Rel 1.1.0
 
 
-Revision History for comarca.go:
+Revision History for court.go:
 
    Release   Author   Date           Description
-    1.0.0    A/F/R    19/NOV/2025    Initial stable release
+    1.0.0    A/F      19/Nov/2025    Initial stable release
+    1.1.0    A        28/Jan/2026    Translation to English
 
 ***************************************************************************/
 
@@ -40,197 +36,196 @@ import (
 	"os/exec"
 )
 
-// Identificação da release
-const Release = "1.0.0"
+// Release identification
+const Release = "1.1.0" // Translation to English
 
 
-// ---------- Estruturas compartilhadas com o tribunal ----------
+// ---------- Structs shared with the Court ----------
 
-type Comarca struct {
+type District struct {
 	ID       int    `json:"id"`
-	Nome     string `json:"nome"`
-	Endereco string `json:"endereco"`
-	Varas    int    `json:"varas"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Trials   int    `json:"trials"`
 }
 
 type Request struct {
-	Type       string `json:"type"`            // "list", "create", "remove", "update_varas"
-	Nome       string `json:"nome,omitempty"`  // usado em create/remove/update_varas
-	Varas      int    `json:"varas,omitempty"` // create / update_varas
-	VarasDelta int    `json:"varas_delta,omitempty"`
+	Type        string `json:"type"`             // "list", "create", "remove", "update_trials"
+	Name        string `json:"name,omitempty"`   // used in create/remove/update_trials
+	Trials      int    `json:"trials,omitempty"` // create / update_trials
+	TrialsDelta int    `json:"trials_delta,omitempty"`
 }
 
 type Response struct {
-	Success  bool      `json:"success"`
-	Message  string    `json:"message"`
-	Comarca  *Comarca  `json:"comarca,omitempty"`
-	Comarcas []Comarca `json:"comarcas,omitempty"`
+	Success  bool        `json:"success"`
+	Message  string      `json:"message"`
+	District  *District  `json:"district,omitempty"`
+	Districts []District `json:"districts,omitempty"`
 }
 
 
-// ---------- Estruturas para comunicação COMARCA <-> VARA ----------
+// ---------- Structs to communication DISTRICT <-> TRIAL ----------
 
-type ComarcaInfoRequest struct {
-	Type   string `json:"type"`    // "vara_info"
-	VaraID int    `json:"vara_id"` // qual vara (1, 2, 3, etc.)
+type DistrictInfoRequest struct {
+	Type    string `json:"type"`     // "trial_info"
+	TrialID int    `json:"trial_id"` // trial id (1, 2, 3, etc.)
 }
 
-type ComarcaInfoResponse struct {
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	VaraAddr    string `json:"vara_addr,omitempty"`
+type DistrictInfoResponse struct {
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+	DistrictID   int    `json:"district_id,omitempty"`
+	DistrictName string `json:"district_name,omitempty"`
+	TrialID      int    `json:"trial_id,omitempty"`
+	TrialAddr    string `json:"trial_addr,omitempty"`
 }
 
 
-// ---------- Consulta de ações / distribuição (COMARCA -> VARA) ----------
+// ---------- Lawsuits verification / distribution (DISTRICT -> TRIAL) ----------
 
-// Descrição da ação a ser consultada/criada
+// Description for the lawsuit that will be verified/created
 type ActionQuery struct {
-	Autor   string `json:"autor"`
-	Reu     string `json:"reu"`
-	CausaID int    `json:"causa_id"`
-	Pedidos []int  `json:"pedidos"`
+	Plaintiff string `json:"plaintiff"`
+	Defendant string `json:"defendant"`
+	CauseID   int    `json:"cause_id"`
+	Claims    []int  `json:"claims"`
 }
 
-// Pedido da comarca para uma vara procurar a ação em suas listas
-// "Stage" corresponde às regras: "coisa_julgada", "litispendencia", "pedido_reiterado",
-// "continencia", "conexao"
-type VaraActionQueryRequest struct {
-	Type  string      `json:"type"`  // "acao_query"
-	Stage string      `json:"stage"` // ver acima
-	Acao  ActionQuery `json:"acao"`
+// Request from a district to a trial to look for a lawsuit inside its lists
+// "Stage" correlated with the rules: "res_judicata", "lis_pendens", "repeated_request", "joinder", "connection"
+type TrialActionQueryRequest struct {
+	Type  string        `json:"type"`   // "lawsuit_query"
+	Stage string        `json:"stage"`  // see above
+	Lawsuit ActionQuery `json:"lawsuit"`
 }
 
-// Resposta da vara sobre a ação
-// Match pode ser:
-//   - "" ou "nenhuma"
-//   - "coisa_julgada"
-//   - "litispendencia"
-//   - "pedido_reiterado"
-//   - "continencia_contida"
-//   - "continencia_continente"
-//   - "conexao"
-type VaraActionQueryResponse struct {
+// Response from a trial about a lawsuit
+// Match can be:
+//   - "" or "none"
+//   - "res_judicata"
+//   - "lis_pendes"
+//   - "repeated_request"
+//   - "contained_joinder"
+//   - "contingent_joinder"
+//   - "connection"
+type TrialActionQueryResponse struct {
 	Success bool   `json:"success"`
 	Stage   string `json:"stage"`
 	Match   string `json:"match"`
 	Message string `json:"message"`
 
-	AcaoID string `json:"acao_id,omitempty"`
+	LawsuitID string `json:"lawsuit_id,omitempty"`
 
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	VaraAddr    string `json:"vara_addr,omitempty"`
+	DistrictID   int    `json:"district_id,omitempty"`
+	DistrictName string `json:"district_name,omitempty"`
+	TrialID      int    `json:"trial_id,omitempty"`
+	TrialAddr    string `json:"trial_addr,omitempty"`
 
-	PedidosExistentes []int    `json:"pedidos_existentes,omitempty"`
-	AcoesConexas      []string `json:"acoes_conexas,omitempty"`
+	ExistentClaims    []int    `json:"existent_claims,omitempty"`
+	ConnectedLawsuits []string `json:"connected_lawsuits,omitempty"`
 }
 
-// Pedido para criar de fato a ação na vara
-// Motivo: "livre", "pedido_reiterado", "conexao"
-type VaraCreateActionRequest struct {
-	Type        string      `json:"type"` // "acao_create"
-	Motivo      string      `json:"motivo"`
-	Acao        ActionQuery `json:"acao"`
-	Relacionada string      `json:"relacionada,omitempty"` // ID da ação relacionada (pedido reiterado, conexão, etc.)
+// Request to create the lawsuit in the trial
+// Reason: "free", "repeated_request", "connection"
+type TrialCreateActionRequest struct {
+	Type        string      `json:"type"` // "lawsuit_create"
+	Reason      string      `json:"reason"`
+	Lawsuit     ActionQuery `json:"lawsuit"`
+	Related     string      `json:"related,omitempty"` // ID for the related lawsuit (repeated request, connection, etc.)
 }
 
-type VaraCreateActionResponse struct {
+type TrialCreateActionResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 
-	AcaoID      string `json:"acao_id,omitempty"`
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	VaraAddr    string `json:"vara_addr,omitempty"`
+	LawsuitID    string `json:"lawsuit_id,omitempty"`
+	DistrictID   int    `json:"district_id,omitempty"`
+	DistrictName string `json:"district_name,omitempty"`
+	TrialID      int    `json:"trial_id,omitempty"`
+	TrialAddr    string `json:"trial_addr,omitempty"`
 }
 
-// Pedido para atualizar os pedidos de uma ação (continência: reunião)
-type VaraMergePedidosRequest struct {
-	Type         string `json:"type"` // "acao_merge_pedidos"
-	AcaoID       string `json:"acao_id"`
-	PedidosNovos []int  `json:"pedidos_novos"`
+// Request to update the lawsuit's requests (containment: joinder)
+type TrialMergeClaimsRequest struct {
+	Type       string `json:"type"` // "lawsuit_merge_claims"
+	LawsuitID  string `json:"lawsuit_id"`
+	NewClaims  []int  `json:"new_claims"`
 }
 
-type VaraMergePedidosResponse struct {
+type TrialMergeClaimsResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
 
 
-// ---------- NOVO: Busca de ações (COMARCA -> VARA) ----------
+// ---------- NEW: Lawsuits search (DISTRICT -> TRIAL) ----------
 
-// Pedido de busca genérico (campo + valor) enviado pela comarca para cada vara.
-// Type = "acao_buscar".
-type VaraBuscarAcoesRequest struct {
-	Type  string `json:"type"`  // "acao_buscar"
-	Campo string `json:"campo"` // "id", "autor", "reu", "causa", "pedido"
-	Valor string `json:"valor"`
+// Generic Search request (field + value) sent by district to each trial.
+// Type = "search_lawsuit".
+type TrialSearchLawsuitsRequest struct {
+	Type  string `json:"type"`  // "search_lawsuit"
+	Field string `json:"field"` // "id", "plaintiff", "defendant", "cause", "claim"
+	Value string `json:"value"`
 }
 
-// Resultado individual retornado pela vara para cada ação encontrada
-type VaraBuscarAcoesResultado struct {
-	Lista      string `json:"lista"`       // "Ativa", "Extinta com mérito", "Extinta sem mérito"
-	ID         string `json:"id"`          // ID da ação
-	Autor      string `json:"autor"`       // Nome do autor
-	Reu        string `json:"reu"`         // Nome do réu
-	CausaPedir int    `json:"causa_pedir"` // ID da causa de pedir
-	Pedidos    []int  `json:"pedidos"`     // Lista de pedidos
+// Individual result returned by the trial for each lawsuit found
+type TrialSearchLawsuitsResult struct {
+	List        string `json:"list"`         // "Active", "Extinguished with merit", "Extinguished without merit"
+	ID          string `json:"id"`           // Lawsuit's ID 
+	Plaintiff   string `json:"plaintiff"`    // Plaintiff name
+	Defendant   string `json:"defendant"`    // Defendant's name
+	CauseAction int    `json:"cause_action"` // Cause of acton ID
+	Claims      []int  `json:"claims"`       // Claims' list
 }
 
-// Resposta da vara com a lista de ações que satisfazem o critério
-type VaraBuscarAcoesResponse struct {
+// Trial's response with list of the lawsuits that meet the criteria
+type TrialSearchLawsuitsResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	VaraAddr    string `json:"vara_addr,omitempty"`
+	DistrictID   int    `json:"district_id,omitempty"`
+	DistrictName string `json:"district_name,omitempty"`
+	TrialID      int    `json:"trial_id,omitempty"`
+	TrialAddr    string `json:"trial_addr,omitempty"`
 
-	Resultados []VaraBuscarAcoesResultado `json:"resultados,omitempty"`
+	Results []TrialSearchLawsuitsResult`json:"results,omitempty"`
 }
 
-// Consulta de carga de trabalho (nº de ações ativas) de uma vara
-type VaraCargaRequest struct {
-	Type string `json:"type"` // "carga_info"
+// Workload verification for a trial (number of active lawsuits)
+type TrialWorkloadRequest struct {
+	Type string `json:"type"` // "workload_info"
 }
 
-type VaraCargaResponse struct {
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	CargaAtiva  int    `json:"carga_ativa"`
+type TrialWorkloadResponse struct {
+	Success        bool   `json:"success"`
+	Message        string `json:"message"`
+	DistrictID     int    `json:"district_id,omitempty"`
+	DistrictName   string `json:"district_name,omitempty"`
+	TrialID        int    `json:"trial_id,omitempty"`
+	ActiveWorkload int    `json:"active_workload"`
 }
 
 
-// ---------- Lista local de comarcas (espelho do tribunal) ----------
+// ---------- Local list of districts (mirror of Court) ----------
 
-type ComarcaList struct {
+type DistrictList struct {
 	mu      sync.RWMutex
-	Itens   []Comarca
+	Items   []District
 	arqPath string
 }
 
-func NovaComarcaList(arqPath string) *ComarcaList {
-	return &ComarcaList{
-		Itens:   make([]Comarca, 0),
+func NewDistrictList(arqPath string) *DistrictList {
+	return &DistrictList{
+		Items:   make([]District, 0),
 		arqPath: arqPath,
 	}
 }
 
-func (cl *ComarcaList) Load() error {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
+func (dl *DistrictList) Load() error {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 
-	f, err := os.Open(cl.arqPath)
+	f, err := os.Open(dl.arqPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -240,76 +235,76 @@ func (cl *ComarcaList) Load() error {
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
-	var itens []Comarca
-	if err := dec.Decode(&itens); err != nil {
+	var items []District
+	if err := dec.Decode(&items); err != nil {
 		return err
 	}
-	cl.Itens = itens
+	dl.Items = items
 	return nil
 }
 
-func (cl *ComarcaList) Save() error {
-	cl.mu.RLock()
-	defer cl.mu.RUnlock()
+func (dl *DistrictList) Save() error {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
 
-	tmp := cl.arqPath + ".tmp"
+	tmp := dl.arqPath + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(cl.Itens); err != nil {
+	if err := enc.Encode(dl.Items); err != nil {
 		f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, cl.arqPath)
+	return os.Rename(tmp, dl.arqPath)
 }
 
-func (cl *ComarcaList) SetAll(list []Comarca) error {
-	cl.mu.Lock()
-	cl.Itens = list
-	cl.mu.Unlock()
-	return cl.Save()
+func (dl *DistrictList) SetAll(list []District) error {
+	dl.mu.Lock()
+	dl.Items = list
+	dl.mu.Unlock()
+	return dl.Save()
 }
 
-func (cl *ComarcaList) GetAll() []Comarca {
-	cl.mu.RLock()
-	defer cl.mu.RUnlock()
-	res := make([]Comarca, len(cl.Itens))
-	copy(res, cl.Itens)
+func (dl *DistrictList) GetAll() []District {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
+	res := make([]District, len(dl.Items))
+	copy(res, dl.Items)
 	return res
 }
 
 
-// ---------- Lista local de varas da comarca ----------
+// ---------- Local list of district's trials ----------
 
-type Vara struct {
+type Trial struct {
 	ID       int    `json:"id"`
-	Endereco string `json:"endereco"`
+	Address  string `json:"address"`
 }
 
-type VaraList struct {
+type TrialList struct {
 	mu      sync.RWMutex
-	Itens   []Vara
+	Items   []Trial
 	arqPath string
 }
 
-func NovaVaraList(arqPath string) *VaraList {
-	return &VaraList{
-		Itens:   make([]Vara, 0),
+func NewTrialList(arqPath string) *TrialList {
+	return &TrialList{
+		Items:   make([]Trial, 0),
 		arqPath: arqPath,
 	}
 }
 
-func (vl *VaraList) Load() error {
-	vl.mu.Lock()
-	defer vl.mu.Unlock()
+func (tl *TrialList) Load() error {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
 
-	f, err := os.Open(vl.arqPath)
+	f, err := os.Open(tl.arqPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -319,144 +314,144 @@ func (vl *VaraList) Load() error {
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
-	var itens []Vara
-	if err := dec.Decode(&itens); err != nil {
+	var items []Trial
+	if err := dec.Decode(&items); err != nil {
 		return err
 	}
-	vl.Itens = itens
+	tl.Items = items
 	return nil
 }
 
-func (vl *VaraList) Save() error {
-	vl.mu.RLock()
-	defer vl.mu.RUnlock()
+func (tl *TrialList) Save() error {
+	tl.mu.RLock()
+	defer tl.mu.RUnlock()
 
-	tmp := vl.arqPath + ".tmp"
+	tmp := tl.arqPath + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(vl.Itens); err != nil {
+	if err := enc.Encode(tl.Items); err != nil {
 		f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, vl.arqPath)
+	return os.Rename(tmp, tl.arqPath)
 }
 
-// próximo ID simples
-func (vl *VaraList) nextID() int {
+// next simple ID
+func (tl *TrialList) nextID() int {
 	max := 0
-	for _, v := range vl.Itens {
-		if v.ID > max {
-			max = v.ID
+	for _, t := range tl.Items {
+		if t.ID > max {
+			max = t.ID
 		}
 	}
 	return max + 1
 }
 
-func (vl *VaraList) Add(endereco string) (Vara, error) {
-	vl.mu.Lock()
-	v := Vara{
-		ID:       vl.nextID(),
-		Endereco: endereco,
+func (tl *TrialList) Add(address string) (Trial, error) {
+	tl.mu.Lock()
+	t := Trial{
+		ID:      tl.nextID(),
+		Address: address,
 	}
-	vl.Itens = append(vl.Itens, v)
-	vl.mu.Unlock()
+	tl.Items = append(tl.Items, t)
+	tl.mu.Unlock()
 
-	if err := vl.Save(); err != nil {
-		return Vara{}, err
+	if err := tl.Save(); err != nil {
+		return Trial{}, err
 	}
-	return v, nil
+	return t, nil
 }
 
-func (vl *VaraList) RemoveByID(id int) (Vara, error) {
-	vl.mu.Lock()
+func (tl *TrialList) RemoveByID(id int) (Trial, error) {
+	tl.mu.Lock()
 	idx := -1
-	var removed Vara
-	for i, v := range vl.Itens {
-		if v.ID == id {
+	var removed Trial
+	for i, t := range tl.Items {
+		if t.ID == id {
 			idx = i
-			removed = v
+			removed = t
 			break
 		}
 	}
 	if idx == -1 {
-		vl.mu.Unlock()
-		return Vara{}, fmt.Errorf("vara com ID %d não encontrada", id)
+		tl.mu.Unlock()
+		return Trial{}, fmt.Errorf("trial with ID %d not found", id)
 	}
-	vl.Itens = append(vl.Itens[:idx], vl.Itens[idx+1:]...)
-	vl.mu.Unlock()
+	tl.Items = append(tl.Items[:idx], tl.Items[idx+1:]...)
+	tl.mu.Unlock()
 
-	if err := vl.Save(); err != nil {
-		return Vara{}, err
+	if err := tl.Save(); err != nil {
+		return Trial{}, err
 	}
 	return removed, nil
 }
 
-func (vl *VaraList) GetAll() []Vara {
-	vl.mu.RLock()
-	defer vl.mu.RUnlock()
-	res := make([]Vara, len(vl.Itens))
-	copy(res, vl.Itens)
+func (tl *TrialList) GetAll() []Trial {
+	tl.mu.RLock()
+	defer tl.mu.RUnlock()
+	res := make([]Trial, len(tl.Items))
+	copy(res, tl.Items)
 	return res
 }
 
-func (vl *VaraList) Count() int {
-	vl.mu.RLock()
-	defer vl.mu.RUnlock()
-	return len(vl.Itens)
+func (tl *TrialList) Count() int {
+	tl.mu.RLock()
+	defer tl.mu.RUnlock()
+	return len(tl.Items)
 }
 
-// Novo: localizar vara pelo ID (usado pela resposta ao vara_info)
-func (vl *VaraList) FindByID(id int) (Vara, bool) {
-	vl.mu.RLock()
-	defer vl.mu.RUnlock()
-	for _, v := range vl.Itens {
-		if v.ID == id {
-			return v, true
+// New: search trial by ID (used by the response to trial_info)
+func (tl *TrialList) FindByID(id int) (Trial, bool) {
+	tl.mu.RLock()
+	defer tl.mu.RUnlock()
+	for _, t := range tl.Items {
+		if t.ID == id {
+			return t, true
 		}
 	}
-	return Vara{}, false
+	return Trial{}, false
 }
 
 
-// ---------- Persistência do NOME e ENDEREÇO da comarca ----------
+// ---------- Persistence for district's NAME and ADDRESS ----------
 
-const nomeComarcaFile = "comarca_nome.txt"
-const addrComarcaFile = "comarca_addr.txt"
+const nameDistrictFile = "district_name.txt"
+const addrDistrictFile = "district_addr.txt"
 
-func carregarNomeComarca(path string) string {
+func loadDistrictName(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("Erro ao ler arquivo de nome da comarca (%s): %v", path, err)
+			log.Printf("Error after trying to read the names' file for district (%s): %v", path, err)
 		}
 		return ""
 	}
-	nome := strings.TrimSpace(string(b))
-	return nome
+	name := strings.TrimSpace(string(b))
+	return name
 }
 
-func salvarNomeComarca(path, nome string) {
-	nome = strings.TrimSpace(nome)
-	if nome == "" {
+func saveNameDistrict(path, name string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return
 	}
-	if err := os.WriteFile(path, []byte(nome+"\n"), 0644); err != nil {
-		log.Printf("Erro ao salvar nome da comarca em %s: %v", path, err)
+	if err := os.WriteFile(path, []byte(name+"\n"), 0644); err != nil {
+		log.Printf("Error after trying to save the district's name in %s: %v", path, err)
 	}
 }
 
-func carregarEnderecoComarca(path string) string {
+func loadDistrictAddress(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("Erro ao ler arquivo de endereço da comarca (%s): %v", path, err)
+			log.Printf("Error after trying to read the address' file for district (%s): %v", path, err)
 		}
 		return ""
 	}
@@ -464,211 +459,212 @@ func carregarEnderecoComarca(path string) string {
 	return addr
 }
 
-func salvarEnderecoComarca(path, addr string) {
+func saveAddressDistrict(path, addr string) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return
 	}
 	if err := os.WriteFile(path, []byte(addr+"\n"), 0644); err != nil {
-		log.Printf("Erro ao salvar endereço da comarca em %s: %v", path, err)
+		log.Printf("Error after trying to save the district's address in %s: %v", path, err)
 	}
 }
 
 
-// ---------- Comunicação com o tribunal ----------
+// ---------- Communication with the Court ----------
 
-func sendToTribunal(tribunalAddr string, req Request) (Response, error) {
+func sendToCourt(courtAddr string, req Request) (Response, error) {
 	var resp Response
 
-	addr, err := net.ResolveUDPAddr("udp", tribunalAddr)
+	addr, err := net.ResolveUDPAddr("udp", courtAddr)
 	if err != nil {
-		return resp, fmt.Errorf("erro ao resolver endereço do tribunal: %v", err)
+		return resp, fmt.Errorf("error after trying to resolve the Court's address: %v", err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return resp, fmt.Errorf("erro ao conectar ao tribunal: %v", err)
+		return resp, fmt.Errorf("error after trying to connect to the Court: %v", err)
 	}
 	defer conn.Close()
 
-	dados, err := json.Marshal(req)
+	data, err := json.Marshal(req)
 	if err != nil {
-		return resp, fmt.Errorf("erro ao codificar JSON: %v", err)
+		return resp, fmt.Errorf("error while coding JSON: %v", err)
 	}
 
-	log.Printf("[COMARCA->TRIBUNAL] %s - enviando req type=%q nome=%q varas=%d para %s",
+	log.Printf("[DISTRICT->COURT] %s - sending req type=%q name=%q trials=%d to %s",
 		time.Now().Format(time.RFC3339),
-		req.Type, req.Nome, req.Varas,
-		tribunalAddr,
+		req.Type, req.Name, req.Trials,
+		courtAddr,
 	)
 
-	if _, err := conn.Write(dados); err != nil {
-		return resp, fmt.Errorf("erro ao enviar UDP: %v", err)
+	if _, err := conn.Write(data); err != nil {
+		return resp, fmt.Errorf("error while sending UDP: %v", err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return resp, fmt.Errorf("erro ao receber resposta do tribunal: %v", err)
+		return resp, fmt.Errorf("error while receiving response from the Court: %v", err)
 	}
 
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return resp, fmt.Errorf("erro ao decodificar resposta JSON: %v", err)
+		return resp, fmt.Errorf("error while decoding response JSON: %v", err)
 	}
 
-	log.Printf("[TRIBUNAL->COMARCA] %s - resposta success=%v msg=%q comarcas=%d",
+	log.Printf("[COURT->DISTRICT] %s - response success=%v msg=%q districts=%d",
 		time.Now().Format(time.RFC3339),
-		resp.Success, resp.Message, len(resp.Comarcas),
+		resp.Success, resp.Message, len(resp.Districts),
 	)
 
 	return resp, nil
 }
 
-func atualizarComarcasDoTribunal(tribunalAddr string, cl *ComarcaList) error {
+func updateDistrictsOfCourt(courtAddr string, dl *DistrictList) error {
 	req := Request{Type: "list"}
-	resp, err := sendToTribunal(tribunalAddr, req)
+	resp, err := sendToCourt(courtAddr, req)
 	if err != nil {
 		return err
 	}
 	if !resp.Success {
-		return fmt.Errorf("tribunal respondeu com erro: %s", resp.Message)
+		return fmt.Errorf("court responded with error: %s", resp.Message)
 	}
-	if err := cl.SetAll(resp.Comarcas); err != nil {
-		return fmt.Errorf("erro ao salvar lista de comarcas local: %v", err)
+	if err := dl.SetAll(resp.Districts); err != nil {
+		return fmt.Errorf("error while saving local districts' list: %v", err)
 	}
 	return nil
 }
 
-func enviarUpdateVaras(tribunalAddr, nomeComarca string, totalVaras int) error {
+func sendUpdateTrials(courtAddr, nameDistrict string, totalTrials int) error {
 	req := Request{
-		Type:  "update_varas",
-		Nome:  nomeComarca,
-		Varas: totalVaras,
+		Type:  "update_trials",
+		Name:  nameDistrict,
+		Trials: totalTrials,
 	}
-	_, err := sendToTribunal(tribunalAddr, req)
+	_, err := sendToCourt(courtAddr, req)
 	return err
 }
 
 
-// ---------- Handler específico para "vara_info" ----------
+// ---------- Specific handler for "trial_info" ----------
 
-func handleVaraInfo(conn *net.UDPConn, remote *net.UDPAddr, data []byte, nomeComarca string, cl *ComarcaList, vl *VaraList) {
-	var req ComarcaInfoRequest
+func handleTrialInfo(conn *net.UDPConn, remote *net.UDPAddr, data []byte, nameDistrict string, dl *DistrictList, tl *TrialList) {
+	var req DistrictInfoRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("Erro ao decodificar ComarcaInfoRequest: %v", err)
+		log.Printf("Erro ao decodificar DistrictInfoRequest: %v", err)
+		log.Printf("Error while decoding DistrictInfoRequest: %v", err)
 		return
 	}
 
-	log.Printf("[VARA->COMARCA] %s - vara_info recebido de %s (VaraID=%d)",
+	log.Printf("[TRIAL->DISTRICT] %s - trial_info received from %s (TrialID=%d)",
 		time.Now().Format(time.RFC3339),
-		remote.String(), req.VaraID,
+		remote.String(), req.TrialID,
 	)
 
-	// Descobrir ID da comarca a partir do espelho local (se existir)
-	comarcaID := 0
-	comarcas := cl.GetAll()
-	for _, c := range comarcas {
-		if c.Nome == nomeComarca {
-			comarcaID = c.ID
+	// Search district's ID from the local mirror (if existent)
+	districtID := 0
+	districts := dl.GetAll()
+	for _, d := range districts {
+		if d.Name == nameDistrict {
+			districtID = d.ID
 			break
 		}
 	}
 
-	// Localiza a vara pelo ID
-	v, ok := vl.FindByID(req.VaraID)
+	// Search a trial by ID
+	t, ok := tl.FindByID(req.TrialID)
 	if !ok {
-		resp := ComarcaInfoResponse{
+		resp := DistrictInfoResponse{
 			Success: false,
-			Message: fmt.Sprintf("Vara com ID %d não encontrada nesta comarca.", req.VaraID),
+			Message: fmt.Sprintf("Trial with ID %d not found in this district.", req.TrialID),
 		}
 		b, _ := json.Marshal(resp)
 		_, _ = conn.WriteToUDP(b, remote)
-		log.Printf("[COMARCA->VARA] vara_info falhou para %s (VaraID=%d): não encontrada",
-			remote.String(), req.VaraID)
+		log.Printf("[DISTRICT->TRIAL] trial_info fault for %s (TrialID=%d): not found",
+			remote.String(), req.TrialID)
 		return
 	}
 
-	// Monta resposta
-	resp := ComarcaInfoResponse{
+	// Assemble the response 
+	resp := DistrictInfoResponse{
 		Success:     true,
-		Message:     "Informações da vara obtidas com sucesso.",
-		ComarcaID:   comarcaID,
-		ComarcaNome: nomeComarca,
-		VaraID:      v.ID,
-		VaraAddr:    v.Endereco,
+		Message:     "Information from the trial sucessfully obtained.",
+		DistrictID:   districtID,
+		DistrictName: nameDistrict,
+		TrialID:      t.ID,
+		TrialAddr:    t.Address,
 	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Erro ao codificar resposta vara_info: %v", err)
+		log.Printf("Error while coding response trial_info: %v", err)
 		return
 	}
 
 	if _, err := conn.WriteToUDP(b, remote); err != nil {
-		log.Printf("Erro ao enviar resposta vara_info para %s: %v", remote.String(), err)
+		log.Printf("Error while sending response trial_info to %s: %v", remote.String(), err)
 		return
 	}
 
-	log.Printf("[COMARCA->VARA] vara_info OK para %s (VaraID=%d, Addr=%s, ComarcaID=%d, Nome=%s)",
-		remote.String(), v.ID, v.Endereco, comarcaID, nomeComarca)
+	log.Printf("[DISTRICT->TRIAL] trial_info OK for %s (TrialID=%d, Addr=%s, DistrictID=%d, Name=%s)",
+		remote.String(), t.ID, t.Address, districtID, nameDistrict)
 }
 
 
-// ---------- Handler para "acao_query" vindo de OUTRA COMARCA ----------
+// ---------- Handler for "lawsuit_query" from the OTHER DISTRICT ----------
 
-// Esse handler permite que UMA comarca atue como "agregadora" das suas varas
-// para outra comarca. A outra comarca envia um VaraActionQueryRequest (acao_query)
-// diretamente para o endereço da comarca, e aqui é repassado para TODAS as varas
-// locais com consultarVarasLocalStage e é devolvida uma VaraActionQueryResponse.
-func handleAcaoQueryComarca(
+// This handler enables that ONE district act as "aggregator" of its trials
+// for another district. The other district send a TrialActionQueryRequest (lawsuit_query)
+// straight to the district's address, and here it is forwarded to ALL the local trials
+// with searchTrialsLocalStage and it is returned a TrialActionQueryResponse
+func handleActionQueryDistrict(
 	conn *net.UDPConn,
 	remote *net.UDPAddr,
 	data []byte,
-	nomeComarca string,
-	cl *ComarcaList,
-	vl *VaraList,
+	nameDistrict string,
+	dl *DistrictList,
+	tl *TrialList,
 ) {
-	var req VaraActionQueryRequest
+	var req TrialActionQueryRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("Erro ao decodificar VaraActionQueryRequest (de %s): %v", remote.String(), err)
+		log.Printf("Error while decoding TrialActionQueryRequest (from %s): %v", remote.String(), err)
 		return
 	}
 
-	log.Printf("[COMARCA<-COMARCA] %s - acao_query stage=%s recebido de %s",
+	log.Printf("[DISTRICT<-TRIAL] %s - lawsuit_query stage=%s received from  %s",
 		time.Now().Format(time.RFC3339), req.Stage, remote.String())
 
-	// Converte ActionQuery -> NovaAcao para reaproveitar consultarVarasLocalStage
-	nova := actionQueryToNovaAcao(req.Acao)
+	// Convert ActionQuery -> NewLawsuit to reuse searchTrialsLocalStage
+	new_lawsuit := actionQueryToNewLawsuit(req.Lawsuit)
 
-	// Consulta TODAS as varas locais para o stage solicitado
-	respLocal, err := consultarVarasLocalStage(vl, req.Stage, nova, 2*time.Second)
+	// Verify ALL the local trials for the requested stage
+	respLocal, err := verifyLocalTrialsStage(tl, req.Stage, new_lawsuit, 2*time.Second)
 	if err != nil {
-		log.Printf("Erro ao consultar varas locais (como COMARCA agregadora) stage=%s: %v", req.Stage, err)
+		log.Printf("Error while verifying local trials (as aggregator DISTRICT) stage=%s: %v", req.Stage, err)
 	}
 
-	// Se não encontrou nada, devolve "nenhuma"
-	if respLocal == nil || !respLocal.Success || respLocal.Match == "" || respLocal.Match == "nenhuma" {
-		vazio := VaraActionQueryResponse{
+	// If not found, return "none"
+	if respLocal == nil || !respLocal.Success || respLocal.Match == "" || respLocal.Match == "none" {
+		empty := TrialActionQueryResponse{
 			Success: true,
 			Stage:   req.Stage,
-			Match:   "nenhuma",
-			Message: "Nenhuma ação correspondente encontrada nesta comarca.",
+			Match:   "none",
+			Message: "No corresponding lawsuit was found in this district.",
 		}
-		b, _ := json.Marshal(vazio)
+		b, _ := json.Marshal(empty)
 		_, _ = conn.WriteToUDP(b, remote)
-		log.Printf("[COMARCA->COMARCA] %s - acao_query stage=%s sem correspondência, devolvendo 'nenhuma' para %s",
+		log.Printf("[DISTRICT->DISTRICT] %s - lawsuit_query stage=%s without correponding, returning 'none' for %s",
 			time.Now().Format(time.RFC3339), req.Stage, remote.String())
 		return
 	}
 
-	// Garante que o nome/ID da comarca estejam preenchidos
-	if respLocal.ComarcaNome == "" || respLocal.ComarcaID == 0 {
-		comarcas := cl.GetAll()
-		for _, c := range comarcas {
-			if c.Nome == nomeComarca {
-				respLocal.ComarcaID = c.ID
-				respLocal.ComarcaNome = c.Nome
+	// Grants that district's name/ID are filled 
+	if respLocal.DistrictName == "" || respLocal.DistrictID == 0 {
+		districts := dl.GetAll()
+		for _, d := range districts {
+			if d.Name == nameDistrict {
+				respLocal.DistrictID = d.ID
+				respLocal.DistrictName = d.Name
 				break
 			}
 		}
@@ -676,37 +672,37 @@ func handleAcaoQueryComarca(
 
 	b, err := json.Marshal(respLocal)
 	if err != nil {
-		log.Printf("Erro ao codificar resposta acao_query (comarca agregadora): %v", err)
+		log.Printf("Error while coding response lawsuit_query (aggregator district): %v", err)
 		return
 	}
 
 	if _, err := conn.WriteToUDP(b, remote); err != nil {
-		log.Printf("Erro ao enviar resposta acao_query (comarca agregadora) para %s: %v", remote.String(), err)
+		log.Printf("Error while sending response lawsuit_query (aggregator district) to %s: %v", remote.String(), err)
 		return
 	}
 
-	log.Printf("[COMARCA->COMARCA] %s - acao_query stage=%s match=%s msg=%q para %s",
+	log.Printf("[DISTRICT->DISTRICT] %s - lawsuit_query stage=%s match=%s msg=%q to %s",
 		time.Now().Format(time.RFC3339), respLocal.Stage, respLocal.Match, respLocal.Message, remote.String())
 }
 
 
-// ---------- Servidor UDP da comarca (para varas) ----------
+// ---------- District UDP server (for trials) ----------
 
-func iniciarServidorVaras(comarcaAddr, nomeComarca string, cl *ComarcaList, vl *VaraList) {
-	addr, err := net.ResolveUDPAddr("udp", comarcaAddr)
+func startTrialsServer(districtAddr, nameDistrict string, dl *DistrictList, tl *TrialList) {
+	addr, err := net.ResolveUDPAddr("udp", districtAddr)
 	if err != nil {
-		log.Printf("Erro ao resolver endereço da comarca (varas): %v", err)
+		log.Printf("Error while resolving district address (trials): %v", err)
 		return
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		log.Printf("Erro ao abrir UDP para varas em %s: %v", comarcaAddr, err)
+		log.Printf("Error while opening UDP for trials at %s: %v", districtAddr, err)
 		return
 	}
 	defer conn.Close()
 
-	log.Printf("Servidor de VARAS da comarca escutando em %s", comarcaAddr)
+	log.Printf("TRIALS server of district listening at %s", districtAddr)
 
 	buf := make([]byte, 4096)
 	for {
@@ -715,33 +711,33 @@ func iniciarServidorVaras(comarcaAddr, nomeComarca string, cl *ComarcaList, vl *
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
-			log.Printf("Erro ao ler UDP de vara: %v", err)
+			log.Printf("Error while reading UDP of trial: %v", err)
 			continue
 		}
 
 		data := make([]byte, n)
 		copy(data, buf[:n])
 
-		// Detecta o tipo da mensagem
+		// Detect the message type
 		var base struct {
 			Type string `json:"type"`
 		}
 		if err := json.Unmarshal(data, &base); err != nil {
-			log.Printf("Erro ao decodificar tipo de mensagem da vara (%s): %v", remote.String(), err)
+			log.Printf("Error while decoding the message type of the trial (%s): %v", remote.String(), err)
 			continue
 		}
 
 		switch base.Type {
-		case "vara_info":
-			handleVaraInfo(conn, remote, data, nomeComarca, cl, vl)
+		case "trial_info":
+			handleTrialInfo(conn, remote, data, nameDistrict, dl, tl)
 
-		case "acao_query":
-			// pedido vindo de OUTRA COMARCA para que esta comarca consulte
-			// TODAS as suas varas para o stage indicado
-			handleAcaoQueryComarca(conn, remote, data, nomeComarca, cl, vl)
+		case "lawsuit_query":
+			// request from OTHER DISTRICT for this district to verify
+			// ALL its trials for the indicated stage
+			handleActionQueryDistrict(conn, remote, data, nameDistrict, dl, tl)
 
 		default:
-			log.Printf("[COMARCA] %s - tipo de mensagem desconhecido %q de %s",
+			log.Printf("[DISTRICT] %s - unknown message type %q from %s",
 				time.Now().Format(time.RFC3339), base.Type, remote.String())
 		}
 
@@ -749,13 +745,13 @@ func iniciarServidorVaras(comarcaAddr, nomeComarca string, cl *ComarcaList, vl *
 }
 
 
-// ---------- Utilitário: limpar tela ----------
+// ---------- clear screen ----------
 func clearScreen() {
 	//fmt.Print("\033[2J\033[H")
 
 	switch runtime.GOOS {
 	case "windows":
-		// Para cmd / PowerShell
+		// For cmd / PowerShell
 		cmd := exec.Command("cmd", "/c", "cls")
 		cmd.Stdout = os.Stdout
 		_ = cmd.Run()
@@ -764,106 +760,106 @@ func clearScreen() {
 		cmd := exec.Command("clear")
 		cmd.Stdout = os.Stdout
 		if err := cmd.Run(); err != nil {
-			// Se der erro, cai pro escape ANSI
+			// If error, goes to ANSI scape
 			fmt.Print("\033[2J\033[H")
 		}
 	}
 }
 
 
-// ---------- Estrutura simples para nova ação ----------
-type NovaAcao struct {
-	Autor   string
-	Reu     string
-	CausaID int
-	Pedidos []int
+// ---------- Simple structure for new lawsuit ----------
+type NewLawsuit struct {
+	Plaintiff  string
+	Defendant  string
+	CauseID    int
+	Claims     []int
 }
 
-func novaAcaoToActionQuery(a NovaAcao) ActionQuery {
+func newLawsuitToActionQuery(a NewLawsuit) ActionQuery {
 	return ActionQuery{
-		Autor:   a.Autor,
-		Reu:     a.Reu,
-		CausaID: a.CausaID,
-		Pedidos: a.Pedidos,
+		Plaintiff: a.Plaintiff,
+		Defendant: a.Defendant,
+		CauseID:   a.CauseID,
+		Claims:    a.Claims,
 	}
 }
 
-// Converte ActionQuery (usado nas mensagens) de volta para NovaAcao
-func actionQueryToNovaAcao(q ActionQuery) NovaAcao {
-	return NovaAcao{
-		Autor:   q.Autor,
-		Reu:     q.Reu,
-		CausaID: q.CausaID,
-		// faz cópia do slice para evitar aliasing
-		Pedidos: append([]int(nil), q.Pedidos...),
+// Convert ActionQuery (used in messages) back to NewLawsuit 
+func actionQueryToNewLawsuit(q ActionQuery) NewLawsuit {
+	return NewLawsuit{
+		Plaintiff: q.Plaintiff,
+		Defendant: q.Defendant,
+		CauseID:   q.CauseID,
+		// make a copy of slice to avoid aliasing
+		Claims: append([]int(nil), q.Claims...),
 	}
 }
 
 
-// ---------- Funções auxiliares de comunicação com VARAS ----------
+// ---------- Aux functions for communication with TRIALS ----------
 
-func consultarVaraStage(varaAddr string, stage string, acao NovaAcao, timeout time.Duration) (*VaraActionQueryResponse, error) {
-	addr, err := net.ResolveUDPAddr("udp", varaAddr)
+func verifyTrialStage(trialAddr string, stage string, lawsuit NewLawsuit, timeout time.Duration) (*TrialActionQueryResponse, error) {
+	addr, err := net.ResolveUDPAddr("udp", trialAddr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao resolver endereço da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while resolving address for trial %s: %v", trialAddr, err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao conectar na vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while connecting in the trial %s: %v", trialAddr, err)
 	}
 	defer conn.Close()
 
-	req := VaraActionQueryRequest{
-		Type:  "acao_query",
+	req := TrialActionQueryRequest{
+		Type:  "lawsuit_query",
 		Stage: stage,
-		Acao:  novaAcaoToActionQuery(acao),
+		Lawsuit:  newLawsuitToActionQuery(lawsuit),
 	}
 	data, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao codificar JSON para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while coding JSON for trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[COMARCA->VARA] %s - enviando acao_query stage=%s para %s",
-		time.Now().Format(time.RFC3339), stage, varaAddr)
+	log.Printf("[DISTRICT->TRIAL] %s - sending lawsuit_query stage=%s to %s",
+		time.Now().Format(time.RFC3339), stage, trialAddr)
 
 	if _, err := conn.Write(data); err != nil {
-		return nil, fmt.Errorf("erro ao enviar acao_query para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while sending lawsuit_query to trial %s: %v", trialAddr, err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao receber resposta da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while receiving response from trial %s: %v", trialAddr, err)
 	}
 
-	var resp VaraActionQueryResponse
+	var resp TrialActionQueryResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return nil, fmt.Errorf("erro ao decodificar resposta da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while decoding response of trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[VARA->COMARCA] %s - resposta stage=%s match=%s msg=%q da vara %s",
-		time.Now().Format(time.RFC3339), resp.Stage, resp.Match, resp.Message, varaAddr)
+	log.Printf("[TRIAL->DISTRICT] %s - response stage=%s match=%s msg=%q of trial %s",
+		time.Now().Format(time.RFC3339), resp.Stage, resp.Match, resp.Message, trialAddr)
 
 	return &resp, nil
 }
 
-// percorre TODAS as varas da comarca local, para determinado estágio/regra
-// e retorna a primeira resposta positiva (coisa julgada, litispendência etc.)
-func consultarVarasLocalStage(vl *VaraList, stage string, acao NovaAcao, timeout time.Duration) (*VaraActionQueryResponse, error) {
-	varas := vl.GetAll()
-	for _, v := range varas {
-		resp, err := consultarVaraStage(v.Endereco, stage, acao, timeout)
+// it goes through all the trials of the local district, for deteminated stage/rule
+// and returns the first positive response (res judicata, lis pendens, etc.)
+func verifyLocalTrialsStage(tl *TrialList, stage string, lawsuit NewLawsuit, timeout time.Duration) (*TrialActionQueryResponse, error) {
+	trials := tl.GetAll()
+	for _, t := range trials {
+		resp, err := verifyTrialStage(t.Address, stage, lawsuit, timeout)
 		if err != nil {
-			log.Printf("Aviso: falha ao consultar vara %s no stage %s: %v", v.Endereco, stage, err)
+			log.Printf("Warning: fault while verifying trial %s in the stage %s: %v", t.Address, stage, err)
 			continue
 		}
-		if resp != nil && resp.Success && resp.Match != "" && resp.Match != "nenhuma" {
-			// Se a própria vara não preencher ComarcaNome/ComarcaID,
-			// pelo menos garantimos o endereço.
-			if resp.VaraAddr == "" {
-				resp.VaraAddr = v.Endereco
+		if resp != nil && resp.Success && resp.Match != "" && resp.Match != "none" {
+			// If the trial does not fullfill DistricName/DistrictID,
+			// at least grants the address.
+			if resp.TrialAddr == "" {
+				resp.TrialAddr = t.Address
 			}
 			return resp, nil
 		}
@@ -871,89 +867,89 @@ func consultarVarasLocalStage(vl *VaraList, stage string, acao NovaAcao, timeout
 	return nil, nil
 }
 
-// Consulta UM endereço de COMARCA (não de vara) para um determinado stage.
-// A outra comarca tratará essa mensagem como 'acao_query' agregando TODAS
-// as suas varas (via handleAcaoQueryComarca).
-func consultarComarcaStage(comarcaAddr string, stage string, acao NovaAcao, timeout time.Duration) (*VaraActionQueryResponse, error) {
-	addr, err := net.ResolveUDPAddr("udp", comarcaAddr)
+// Verifies an address for DISTRICT (not trial) for a specific stage.
+// The other district will treat this message as 'lawsuit_query' aggregating ALL
+// its trias (through handleActionQueryDistrict).
+func verifyDistrictStage(districtAddr string, stage string, lawsuit NewLawsuit, timeout time.Duration) (*TrialActionQueryResponse, error) {
+	addr, err := net.ResolveUDPAddr("udp", districtAddr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao resolver endereço da comarca %s: %v", comarcaAddr, err)
+		return nil, fmt.Errorf("error while resolving the address for district %s: %v", districtAddr, err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao conectar na comarca %s: %v", comarcaAddr, err)
+		return nil, fmt.Errorf("error while connecting to district %s: %v", districtAddr, err)
 	}
 	defer conn.Close()
 
-	req := VaraActionQueryRequest{
-		Type:  "acao_query",
+	req := TrialActionQueryRequest{
+		Type:  "lawsuit_query",
 		Stage: stage,
-		Acao:  novaAcaoToActionQuery(acao),
+		Lawsuit:  newLawsuitToActionQuery(lawsuit),
 	}
 	data, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao codificar JSON para comarca %s: %v", comarcaAddr, err)
+		return nil, fmt.Errorf("error while coding JSON for district %s: %v", districtAddr, err)
 	}
 
-	log.Printf("[COMARCA->COMARCA] %s - enviando acao_query stage=%s para %s",
-		time.Now().Format(time.RFC3339), stage, comarcaAddr)
+	log.Printf("[DISTRICT->DISTRICT] %s - sending lawsuit_query stage=%s to %s",
+		time.Now().Format(time.RFC3339), stage, districtAddr)
 
 	if _, err := conn.Write(data); err != nil {
-		return nil, fmt.Errorf("erro ao enviar acao_query para comarca %s: %v", comarcaAddr, err)
+		return nil, fmt.Errorf("error while sending lawsuit_query to district %s: %v", districtAddr, err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao receber resposta da comarca %s: %v", comarcaAddr, err)
+		return nil, fmt.Errorf("error while receving response from district %s: %v", districtAddr, err)
 	}
 
-	var resp VaraActionQueryResponse
+	var resp TrialActionQueryResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return nil, fmt.Errorf("erro ao decodificar resposta da comarca %s: %v", comarcaAddr, err)
+		return nil, fmt.Errorf("error while decoding response from district %s: %v", districtAddr, err)
 	}
 
-	log.Printf("[COMARCA<-COMARCA] %s - resposta stage=%s match=%s msg=%q da comarca %s",
-		time.Now().Format(time.RFC3339), resp.Stage, resp.Match, resp.Message, comarcaAddr)
+	log.Printf("[DISTRICT<-DISTRICT] %s - response stage=%s match=%s msg=%q from district %s",
+		time.Now().Format(time.RFC3339), resp.Stage, resp.Match, resp.Message, districtAddr)
 
 	return &resp, nil
 }
 
-// Percorre TODAS as OUTRAS comarcas (diferentes da comarca local) para um
-// determinado stage. Retorna a primeira resposta positiva (match != "" / "nenhuma").
-func consultarOutrasComarcasStage(
-	nomeComarcaLocal string,
-	cl *ComarcaList,
+// Travel ALL the OTHER districts (different than the local district) for one
+// specific stage. Returns the first positive response (match != "" / "nome").
+func verifyOtherDistrictsStage(
+	nameDistrictLocal string,
+	dl *DistrictList,
 	stage string,
-	acao NovaAcao,
+	lawsuit NewLawsuit,
 	timeout time.Duration,
-) (*VaraActionQueryResponse, error) {
-	comarcas := cl.GetAll()
-	for _, c := range comarcas {
-		if strings.EqualFold(c.Nome, nomeComarcaLocal) {
-			// pula a própria comarca
+) (*TrialActionQueryResponse, error) {
+	districts := dl.GetAll()
+	for _, d := range districts {
+		if strings.EqualFold(d.Name, nameDistrictLocal) {
+			// jump the own district
 			continue
 		}
-		comarcaAddr := strings.TrimSpace(c.Endereco)
-		if comarcaAddr == "" {
+		districtAddr := strings.TrimSpace(d.Address)
+		if districtAddr == "" {
 			continue
 		}
 
-		resp, err := consultarComarcaStage(comarcaAddr, stage, acao, timeout)
+		resp, err := verifyDistrictStage(districtAddr, stage, lawsuit, timeout)
 		if err != nil {
-			log.Printf("Aviso: falha ao consultar comarca %s (%s) no stage %s: %v",
-				c.Nome, comarcaAddr, stage, err)
+			log.Printf("Warning: fault while verifying district %s (%s) in the stage %s: %v",
+				d.Name, districtAddr, stage, err)
 			continue
 		}
-		if resp != nil && resp.Success && resp.Match != "" && resp.Match != "nenhuma" {
-			// Garante info da comarca, se veio vazia
-			if resp.ComarcaID == 0 {
-				resp.ComarcaID = c.ID
+		if resp != nil && resp.Success && resp.Match != "" && resp.Match != "none" {
+			// Grants district's info, if came empty
+			if resp.DistrictID == 0 {
+				resp.DistrictID = d.ID
 			}
-			if resp.ComarcaNome == "" {
-				resp.ComarcaNome = c.Nome
+			if resp.DistrictName == "" {
+				resp.DistrictName = d.Name
 			}
 			return resp, nil
 		}
@@ -961,715 +957,725 @@ func consultarOutrasComarcasStage(
 	return nil, nil
 }
 
-// Envia pedido de criação de ação para uma vara específica
-func criarAcaoNaVaraAddr(varaAddr, motivo, relacionada string, acao NovaAcao, timeout time.Duration) (*VaraCreateActionResponse, error) {
-	addr, err := net.ResolveUDPAddr("udp", varaAddr)
+// Send request to create a lawsuit for a specific trial 
+func createLawsuitInTrialAddr(trialAddr, reason, related string, lawsuit NewLawsuit, timeout time.Duration) (*TrialCreateActionResponse, error) {
+	addr, err := net.ResolveUDPAddr("udp", trialAddr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao resolver endereço da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while resolving address for trial %s: %v", trialAddr, err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao conectar na vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while connecting to the trial %s: %v", trialAddr, err)
 	}
 	defer conn.Close()
 
-	req := VaraCreateActionRequest{
-		Type:        "acao_create",
-		Motivo:      motivo,
-		Acao:        novaAcaoToActionQuery(acao),
-		Relacionada: relacionada,
+	req := TrialCreateActionRequest{
+		Type:    "lawsuit_create",
+		Reason:  reason,
+		Lawsuit: newLawsuitToActionQuery(lawsuit),
+		Related: related,
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao codificar JSON (acao_create) para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while decoding JSON (lawsuit_create) to trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[COMARCA->VARA] %s - enviando acao_create motivo=%s para %s (relacionada=%s)",
-		time.Now().Format(time.RFC3339), motivo, varaAddr, relacionada)
+	log.Printf("[DISTRICT->TRIAL] %s - sending lawsuit_create reason=%s to %s (related=%s)",
+		time.Now().Format(time.RFC3339), reason, trialAddr, related)
 
 	if _, err := conn.Write(data); err != nil {
-		return nil, fmt.Errorf("erro ao enviar acao_create para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while sending lawsuit_create to trial %s: %v", trialAddr, err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao receber resposta de acao_create da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while receiving response from lawsuit_create of trial %s: %v", trialAddr, err)
 	}
 
-	var resp VaraCreateActionResponse
+	var resp TrialCreateActionResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return nil, fmt.Errorf("erro ao decodificar resposta acao_create da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while decoding response lawsuit_create from trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[VARA->COMARCA] %s - resposta acao_create success=%v acao_id=%s msg=%q (vara=%s)",
-		time.Now().Format(time.RFC3339), resp.Success, resp.AcaoID, resp.Message, varaAddr)
+	log.Printf("[TRIAL->DISTRICT] %s - response lawsuit_create success=%v lawsuit_id=%s msg=%q (trial=%s)",
+		time.Now().Format(time.RFC3339), resp.Success, resp.LawsuitID, resp.Message, trialAddr)
 
 	return &resp, nil
 }
 
-// Envia pedido para MESCLAR pedidos em ação já existente (continência)
-func enviarMergePedidosParaVaraAddr(varaAddr, acaoID string, pedidosNovos []int, timeout time.Duration) (*VaraMergePedidosResponse, error) {
-	addr, err := net.ResolveUDPAddr("udp", varaAddr)
+// Send request to merge claims in lawsuit already existent (containment)
+func sendMergeClaimsToTrialAddr(trialAddr, lawsuitID string, newClaims []int, timeout time.Duration) (*TrialMergeClaimsResponse, error) {
+	addr, err := net.ResolveUDPAddr("udp", trialAddr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao resolver endereço da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while resolving address for trial %s: %v", trialAddr, err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao conectar na vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while connecting in the trial %s: %v", trialAddr, err)
 	}
 	defer conn.Close()
 
-	req := VaraMergePedidosRequest{
-		Type:         "acao_merge_pedidos",
-		AcaoID:       acaoID,
-		PedidosNovos: pedidosNovos,
+	req := TrialMergeClaimsRequest{
+		Type:      "lawsuit_merge_claims",
+		LawsuitID: lawsuitID,
+		NewClaims: newClaims,
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao codificar JSON (acao_merge_pedidos) para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while coding JSON (lawsuit_merge_claims) to trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[COMARCA->VARA] %s - enviando acao_merge_pedidos acao_id=%s para %s",
-		time.Now().Format(time.RFC3339), acaoID, varaAddr)
+	log.Printf("[DISTRICT->TRIAL] %s - sending lawsuit_merge_claims lawsuit_id=%s to %s",
+		time.Now().Format(time.RFC3339), lawsuitID, trialAddr)
 
 	if _, err := conn.Write(data); err != nil {
-		return nil, fmt.Errorf("erro ao enviar acao_merge_pedidos para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while sending lawsuit_merge_claims to trial %s: %v", trialAddr, err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao receber resposta de acao_merge_pedidos da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while receiving response lawsuit_merge_claims from trial %s: %v", trialAddr, err)
 	}
 
-	var resp VaraMergePedidosResponse
+	var resp TrialMergeClaimsResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return nil, fmt.Errorf("erro ao decodificar resposta acao_merge_pedidos da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while decoding response lawsuit_merge_claims from trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[VARA->COMARCA] %s - resposta acao_merge_pedidos success=%v msg=%q (vara=%s)",
-		time.Now().Format(time.RFC3339), resp.Success, resp.Message, varaAddr)
+	log.Printf("[TRIAL->DISTRICT] %s - response lawsuit_merge_claims success=%v msg=%q (trial=%s)",
+		time.Now().Format(time.RFC3339), resp.Success, resp.Message, trialAddr)
 
 	return &resp, nil
 }
 
-// ---------- NOVO: Função para enviar pedido de busca para uma vara ----------
-func buscarAcoesNaVara(varaAddr, campo, valor string, timeout time.Duration) (*VaraBuscarAcoesResponse, error) {
-	addr, err := net.ResolveUDPAddr("udp", varaAddr)
+// ---------- NEW: Function to send search request to a trial ----------
+func searchLawsuitsAtTrial(trialAddr, field, value string, timeout time.Duration) (*TrialSearchLawsuitsResponse, error) {
+	addr, err := net.ResolveUDPAddr("udp", trialAddr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao resolver endereço da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while resolving address for trial %s: %v", trialAddr, err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao conectar na vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while connecting in the trial %s: %v", trialAddr, err)
 	}
 	defer conn.Close()
 
-	req := VaraBuscarAcoesRequest{
-		Type:  "acao_buscar",
-		Campo: campo,
-		Valor: valor,
+	req := TrialSearchLawsuitsRequest{
+		Type:  "search_lawsuit",
+		Field: field,
+		Value: value,
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao codificar JSON (acao_buscar) para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while coding JSON (search_lawsuit) for trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[COMARCA->VARA] %s - enviando acao_buscar campo=%s valor=%q para %s",
-		time.Now().Format(time.RFC3339), campo, valor, varaAddr)
+	log.Printf("[DISTRICT->TRIAL] %s - sending search_lawsuit field=%s value=%q to %s",
+		time.Now().Format(time.RFC3339), field, value, trialAddr)
 
 	if _, err := conn.Write(data); err != nil {
-		return nil, fmt.Errorf("erro ao enviar acao_buscar para vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while sending search_lawsuit to trial %s: %v", trialAddr, err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 65535)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao receber resposta de acao_buscar da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while receiving response search_lawsuit from trial %s: %v", trialAddr, err)
 	}
 
-	var resp VaraBuscarAcoesResponse
+	var resp TrialSearchLawsuitsResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return nil, fmt.Errorf("erro ao decodificar resposta acao_buscar da vara %s: %v", varaAddr, err)
+		return nil, fmt.Errorf("error while decoding response search_lawsuit from trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[VARA->COMARCA] %s - resposta acao_buscar success=%v resultados=%d msg=%q (vara=%s)",
-		time.Now().Format(time.RFC3339), resp.Success, len(resp.Resultados), resp.Message, varaAddr)
+	log.Printf("[TRIAL->DISTRICT] %s - response search_lawsuit success=%v results=%d msg=%q (trial=%s)",
+		time.Now().Format(time.RFC3339), resp.Success, len(resp.Results), resp.Message, trialAddr)
 
 	return &resp, nil
 }
 
-// Consulta a carga de trabalho (ações ativas) de uma vara específica
-func consultarCargaVara(varaAddr string, timeout time.Duration) (int, error) {
-	addr, err := net.ResolveUDPAddr("udp", varaAddr)
+// Verify the workload (actives lawsuits) for a specific trial
+func verifyWorkloadTrial(trialAddr string, timeout time.Duration) (int, error) {
+	addr, err := net.ResolveUDPAddr("udp", trialAddr)
 	if err != nil {
-		return 0, fmt.Errorf("erro ao resolver endereço da vara %s: %v", varaAddr, err)
+		return 0, fmt.Errorf("error while resolving the address for trial %s: %v", trialAddr, err)
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		return 0, fmt.Errorf("erro ao conectar na vara %s: %v", varaAddr, err)
+		return 0, fmt.Errorf("error while connecting in the trial %s: %v", trialAddr, err)
 	}
 	defer conn.Close()
 
-	req := VaraCargaRequest{Type: "carga_info"}
+	req := TrialWorkloadRequest{Type: "workload_info"}
 	data, err := json.Marshal(req)
 	if err != nil {
-		return 0, fmt.Errorf("erro ao codificar JSON (carga_info) para vara %s: %v", varaAddr, err)
+		return 0, fmt.Errorf("error while coding JSON (workload_info) for trial %s: %v", trialAddr, err)
 	}
 
-	log.Printf("[COMARCA->VARA] %s - enviando carga_info para %s",
-		time.Now().Format(time.RFC3339), varaAddr)
+	log.Printf("[DISTRICT->TRIAL] %s - sending workload_info to %s",
+		time.Now().Format(time.RFC3339), trialAddr)
 
 	if _, err := conn.Write(data); err != nil {
-		return 0, fmt.Errorf("erro ao enviar carga_info para vara %s: %v", varaAddr, err)
+		return 0, fmt.Errorf("error while sending workload_info to trial %s: %v", trialAddr, err)
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		return 0, fmt.Errorf("erro ao receber resposta de carga da vara %s: %v", varaAddr, err)
+		return 0, fmt.Errorf("error while receiving workload response for trial %s: %v", trialAddr, err)
 	}
 
-	var resp VaraCargaResponse
+	var resp TrialWorkloadResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		return 0, fmt.Errorf("erro ao decodificar resposta de carga da vara %s: %v", varaAddr, err)
+		return 0, fmt.Errorf("error while decoding workload response for trial %s: %v", trialAddr, err)
 	}
 
 	if !resp.Success {
-		return 0, fmt.Errorf("vara %s respondeu falha na consulta de carga: %s", varaAddr, resp.Message)
+		return 0, fmt.Errorf("trial %s fault response in the workload verification: %s", trialAddr, resp.Message)
 	}
 
-	return resp.CargaAtiva, nil
+	return resp.ActiveWorkload, nil
 }
 
 
-// ---------- Distribuição LIVRE (regra 6) ----------
+// ---------- FREE Distribution (rule 6) ----------
 
-func distribuirAcaoLivre(nomeComarca string, vl *VaraList, acao NovaAcao, timeout time.Duration) (string, error) {
-	varas := vl.GetAll()
-	if len(varas) == 0 {
-		return "", fmt.Errorf("não há varas cadastradas nesta comarca")
+func lawsuitFreeDistribution(nameDistrict string, tl *TrialList, lawsuit NewLawsuit, timeout time.Duration) (string, error) {
+	trials := tl.GetAll()
+	if len(trials) == 0 {
+		return "", fmt.Errorf("no registered trials in this district")
 	}
 
-	// Escolher a vara com MENOR carga de trabalho (menor número de ações ativas)
+	// Choose the trial with SMALL workload (fewer number of active lawsuits)
 	var (
-		melhorVara  Vara
-		melhorCarga int
-		achou       bool
+		bestTrial    Trial
+		bestWorkload int
+		found        bool
 	)
 
-	for _, v := range varas {
-		carga, err := consultarCargaVara(v.Endereco, timeout)
+	for _, t := range trials {
+		workload, err := verifyWorkloadTrial(t.Address, timeout)
 		if err != nil {
-			log.Printf("Aviso: falha ao obter carga da vara %s: %v", v.Endereco, err)
+			log.Printf("Warning: fault while getting the workload for the trial %s: %v", t.Address, err)
 			continue
 		}
-		if !achou || carga < melhorCarga {
-			achou = true
-			melhorCarga = carga
-			melhorVara = v
+		if !found || workload < bestWorkload {
+			found = true
+			bestWorkload = workload 
+			bestTrial = t
 		}
 	}
 
-	// Se não foi possível obter a carga de nenhuma vara, cai no fallback aleatório
-	if !achou {
+	// If not possible to get the workload for the trials, goes to random fallback 
+	if !found {
 		rand.Seed(time.Now().UnixNano())
-		melhorVara = varas[rand.Intn(len(varas))]
-		log.Printf("Distribuição livre: nenhuma carga obtida; escolhendo vara aleatoriamente: %s", melhorVara.Endereco)
+		bestTrial = trials[rand.Intn(len(trials))]
+		log.Printf("Free distribution: workload not get; choosing a random trial: %s", bestTrial.Address)
 	} else {
-		log.Printf("Distribuição livre: escolhendo vara %s com carga de trabalho %d", melhorVara.Endereco, melhorCarga)
+		log.Printf("Free distribution: choosing trial %s with workload %d", bestTrial.Address, bestWorkload)
 	}
 
-	createResp, err := criarAcaoNaVaraAddr(melhorVara.Endereco, "livre", "", acao, timeout)
+	createResp, err := createLawsuitInTrialAddr(bestTrial.Address, "free", "", lawsuit, timeout)
 	if err != nil {
-		return "", fmt.Errorf("erro ao criar ação por distribuição livre na vara %s: %v", melhorVara.Endereco, err)
+		return "", fmt.Errorf("error while creating lawsuit with free distribution at trial %s: %v", bestTrial.Address, err)
 	}
 	if !createResp.Success {
-		return "", fmt.Errorf("vara recusou criação de ação por distribuição livre: %s", createResp.Message)
+		return "", fmt.Errorf("trial refused create lawsuit by free distribution: %s", createResp.Message)
 	}
 
-	acaoID := createResp.AcaoID
-	if acaoID == "" {
-		acaoID = "(ID não retornado pela vara)"
+	lawsuitID := createResp.LawsuitID
+	if lawsuitID == "" {
+		lawsuitID = "(ID not returned by trial)"
 	}
 
 	msg := fmt.Sprintf(
-		"Distribuição LIVRE realizada.\n\nComarca: %s\nVara escolhida: ID %d (endereço %s)\nIdentificação da ação criada: %s\n\nAutor: %s\nRéu: %s\nCausa de pedir (ID): %d\nPedidos (IDs): %v\n",
-		strings.ToUpper(nomeComarca),
-		createResp.VaraID, melhorVara.Endereco,
-		acaoID,
-		acao.Autor, acao.Reu, acao.CausaID, acao.Pedidos,
+		"FREE DISTRIBUTION.\n\nDistrict: %s\nTrial: ID %d (address %s)\nIdentification for the created lawsuit: %s\n\nPlaintiff: %s\nDefendant: %s\nCause (ID): %d\nClaims (IDs): %v\n",
+		strings.ToUpper(nameDistrict),
+		createResp.TrialID, bestTrial.Address,
+		lawsuitID,
+		lawsuit.Plaintiff, lawsuit.Defendant, lawsuit.CauseID, lawsuit.Claims,
 	)
 
-	if achou {
-		msg += fmt.Sprintf("\nCritério: vara com menor carga de trabalho (ações ativas = %d) na comarca.\n", melhorCarga)
+	if found {
+		msg += fmt.Sprintf("\nCriteria: trial with small workload (active lawsuits= %d) in the district.\n", bestWorkload)
 	} else {
-		msg += "\nCritério: não foi possível obter a carga das varas; usada escolha aleatória.\n"
+		msg += "\nCriteria: not possible to get the workload for the trials; used random choice.\n"
 	}
 
 	return msg, nil
 }
 
 
-// ---------- Parser de pedidos (IDs separados por vírgula) ----------
+// ---------- Parser for the claims (IDs separated by commas) ----------
 
-func parsePedidosInput(input string) ([]int, error) {
+func parseClaimsInput(input string) ([]int, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
-		return nil, fmt.Errorf("nenhum pedido informado")
+		return nil, fmt.Errorf("claim not informed")
 	}
-	partes := strings.Split(s, ",")
-	var pedidos []int
-	for _, p := range partes {
+	parties := strings.Split(s, ",")
+	var claims []int
+	for _, p := range parties {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
 		id, err := strconv.Atoi(p)
 		if err != nil {
-			return nil, fmt.Errorf("pedido inválido: %q (esperado número inteiro)", p)
+			return nil, fmt.Errorf("invalid claim: %q (integer expected)", p)
 		}
-		pedidos = append(pedidos, id)
+		claims = append(claims, id)
 	}
-	if len(pedidos) == 0 {
-		return nil, fmt.Errorf("nenhum pedido válido informado")
+	if len(claims) == 0 {
+		return nil, fmt.Errorf("no valid claim informed")
 	}
-	return pedidos, nil
+	return claims, nil
 }
 
 
-// ---------- Menu interativo ----------
+// ---------- Interactive Menu ----------
 
 func main() {
 	// Flags
-	helpFlag := flag.Bool("h", false, "Mostrar help")
-	nomeFlag := flag.String("nome", "", "Nome da comarca (se vazio, usa o nome salvo em arquivo)")
-	tribunalAddr := flag.String("tribunal", "127.0.0.1:9000", "Endereço UDP do tribunal")
-	addrFlag := flag.String("addr", "", "Endereço UDP desta comarca (para varas). Se vazio, usa arquivo ou busca no tribunal.")
-	comarcasFile := flag.String("comarcas", "comarcas_local.json", "Arquivo local de comarcas")
-	varasFile := flag.String("varas", "varas.json", "Arquivo local de varas")
-	logFlag := flag.String("log", "", "Arquivo de log (ou 'term' para log no terminal; default: comarca.log)")
+	helpFlag := flag.Bool("h", false, "Show help")
+	infoFlag := flag.Bool("info", false, "Show information about option flags")
+	nameFlag := flag.String("name", "", "District name (if empty, uses the name saved in file district_name.txt)")
+	courtAddr := flag.String("court", "127.0.0.1:9000", "Court's UDP address")
+	addrFlag := flag.String("addr", "", "UDP address for this district (for trials). If empty, uses information in the file district_addr.txt or search in the Court.")
+	districtsFile := flag.String("districts", "districts_local.json", "Districts' local file")
+	trialsFile := flag.String("trials", "trials.json", "Trials' local file")
+	logFlag := flag.String("log", "", "Log file (or 'term' for log in the terminal; default: district.log)")
 	flag.Parse()
 
-	// Configuração de LOG
+	if *helpFlag {
+		fmt.Println("Program used to simulate the descentralization of the procedure for adding") 
+		fmt.Println("a new lawsuit in one of the existing trials in one of the various judicial districts")
+		fmt.Println("of the Justice Court of São Paulo (Tribunal de Justiça de São Paulo), in Brazil.")
+		fmt.Println("\n Release:", Release)
+		fmt.Println()
+		fmt.Println("Usage: district [-h] [-info] [-addr <UDP address>] [-court <UDP address>] [-name <district name>] [-log <file_name|term>]")
+		fmt.Println("       at least -name option must be given if there isn't the file district_name.txt at current folder")
+		return
+	}
+
+	// Uses -info as the default behavior for -h
+	if *infoFlag {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	// 1) Resolves district's NAME
+	nameFromFile := loadDistrictName(nameDistrictFile)
+	nameDistrict := strings.TrimSpace(*nameFlag)
+
+	if nameDistrict == "" {
+		if nameFromFile == "" {
+			fmt.Println("Error: district's name not informed by -name or found in file district_name.txt.\n")
+			flag.Usage()
+			os.Exit(1)
+		}
+		nameDistrict = nameFromFile
+	}
+
+	if nameDistrict != nameFromFile {
+		saveNameDistrict(nameDistrictFile, nameDistrict)
+	}
+
+	// LOG Configuration (if a valid district's name)
 	if *logFlag == "" {
-		logFile, err := os.OpenFile("comarca.log",
+		logFile, err := os.OpenFile("district.log",
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			fmt.Println("Erro ao abrir arquivo de log padrão (comarca.log):", err)
+			fmt.Println("Error while opening default log file (district.log):", err)
 		} else {
 			log.SetOutput(logFile)
 		}
 	} else if *logFlag == "term" {
-		// mantém saída padrão (stderr)
+		// stay with default output (stderr)
 	} else {
 		logFile, err := os.OpenFile(*logFlag,
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			fmt.Println("Erro ao abrir arquivo de log:", err)
+			fmt.Println("Error while opening log file:", err)
 		} else {
 			log.SetOutput(logFile)
 		}
 	}
 
-	if *helpFlag {
-		fmt.Println("Programa utilizado para simular a descentralização do procedimento de inserir nova ação cível em uma das varas existentes nas diversas comarcas do Tribunal de Justiça do Estado de São Paulo.")
-		fmt.Println("Release:", Release)
-		fmt.Println()
-		fmt.Println("Usage: comarca [-h] [-info] [-addr <endereco UDP>] [-tribunal <endereco UDP>] [-nome <nome da comarca>] [-log <arquivo|term>]")
-		return
+	// Local districts' list
+	dl := NewDistrictList(*districtsFile)
+	if err := dl.Load(); err != nil {
+		log.Printf("Error while loading local districts: %v", err)
 	}
 
-
-	// 1) Resolver NOME da comarca
-	nomeFromFile := carregarNomeComarca(nomeComarcaFile)
-	nomeComarca := strings.TrimSpace(*nomeFlag)
-
-	if nomeComarca == "" {
-		if nomeFromFile == "" {
-			log.Println("Erro: nome da comarca não foi informado via -nome nem encontrado em arquivo.")
-			os.Exit(1)
-		}
-		nomeComarca = nomeFromFile
-	}
-
-	if nomeComarca != nomeFromFile {
-		salvarNomeComarca(nomeComarcaFile, nomeComarca)
-	}
-
-	// Lista local de comarcas
-	cl := NovaComarcaList(*comarcasFile)
-	if err := cl.Load(); err != nil {
-		log.Printf("Erro ao carregar comarcas locais: %v", err)
-	}
-
-	// 2) Resolver ENDEREÇO da comarca
-	comarcaAddr := strings.TrimSpace(*addrFlag)
-	if comarcaAddr == "" {
-		addrFromFile := carregarEnderecoComarca(addrComarcaFile)
+	// 2) Resolves district's ADDRESS
+	districtAddr := strings.TrimSpace(*addrFlag)
+	if districtAddr == "" {
+		addrFromFile := loadDistrictAddress(addrDistrictFile)
 		if addrFromFile != "" {
-			comarcaAddr = addrFromFile
+			districtAddr = addrFromFile
 		} else {
-			log.Printf("Endereço da comarca não informado nem em arquivo. Tentando obter do tribunal para a comarca %q...", nomeComarca)
-			if err := atualizarComarcasDoTribunal(*tribunalAddr, cl); err != nil {
-				log.Printf("Erro ao tentar obter lista de comarcas do tribunal: %v", err)
+			log.Printf("District's address was neither provided nor found in file. Trying to get it from the Court for the district %q...", nameDistrict)
+			if err := updateDistrictsOfCourt(*courtAddr, dl); err != nil {
+				log.Printf("Error while trying to get the list of districts from the Court: %v", err)
 			} else {
-				comarcas := cl.GetAll()
-				for _, c := range comarcas {
-					if c.Nome == nomeComarca {
-						comarcaAddr = strings.TrimSpace(c.Endereco)
-						if comarcaAddr != "" {
+				districts := dl.GetAll()
+				for _, d := range districts {
+					if d.Name == nameDistrict {
+						districtAddr = strings.TrimSpace(d.Address)
+						if districtAddr != "" {
 							break
 						}
 					}
 				}
 			}
 
-			if comarcaAddr == "" {
-				log.Println("Erro: não foi possível determinar o endereço UDP da comarca.")
-				log.Println("Informe via flag -addr ou configure o arquivo", addrComarcaFile, "ou cadastre a comarca no tribunal com endereço.")
+			if districtAddr == "" {
+				fmt.Println("Error: it was not possible to set the UDP address for the district.")
+				fmt.Println("Enter it by the flag -addr or configure the file", addrDistrictFile, "(the Court must be running if not used -addr flag).")
 				os.Exit(1)
 			}
 		}
 	}
 
-	addrFromFile := carregarEnderecoComarca(addrComarcaFile)
-	if comarcaAddr != addrFromFile {
-		salvarEnderecoComarca(addrComarcaFile, comarcaAddr)
+	addrFromFile := loadDistrictAddress(addrDistrictFile)
+	if districtAddr != addrFromFile {
+		saveAddressDistrict(addrDistrictFile, districtAddr)
 	}
 
-	log.Printf("Iniciando COMARCA %q. Tribunal em %s. Comarca escutando varas em %s.",
-		nomeComarca, *tribunalAddr, comarcaAddr)
+	log.Printf("Starting DISTRICT %q. Court in %s. District listening trials in %s.",
+		nameDistrict, *courtAddr, districtAddr)
 
-	// Atualizar comarcas do tribunal (melhor effort)
-	if err := atualizarComarcasDoTribunal(*tribunalAddr, cl); err != nil {
-		log.Printf("Não foi possível atualizar comarcas a partir do tribunal: %v", err)
-		log.Printf("Usando lista local (se existir).")
+	// Updates districts of Court (best effort)
+	if err := updateDistrictsOfCourt(*courtAddr, dl); err != nil {
+		log.Printf("It was not possible to update the districts from the Court: %v", err)
+		log.Printf("Using local list (if existent).")
 	}
 
-	// Lista local de varas
-	vl := NovaVaraList(*varasFile)
-	if err := vl.Load(); err != nil {
-		log.Printf("Erro ao carregar varas locais: %v", err)
+	// Trials' local list
+	tl := NewTrialList(*trialsFile)
+	if err := tl.Load(); err != nil {
+		log.Printf("Error while loading local trials: %v", err)
 	}
 
 	clearScreen()
 	time.Sleep(100 * time.Millisecond)
 	clearScreen()
-	fmt.Printf("COMARCA %q. Tribunal em %s. Comarca escutando varas em %s.",
-		nomeComarca, *tribunalAddr, comarcaAddr)
+	fmt.Printf("DISTRICT %q. Court in %s. District listening trials in %s.",
+		nameDistrict, *courtAddr, districtAddr)
 	time.Sleep(2000 * time.Millisecond)
 	clearScreen()
 
 
-	// Servidor UDP para varas (agora com acesso à lista de comarcas/varas e nome da comarca)
-	go iniciarServidorVaras(comarcaAddr, nomeComarca, cl, vl)
+	// UDP server for trials (now with access to the list of districts/trial and district's name)
+	go startTrialsServer(districtAddr, nameDistrict, dl, tl)
 
 
-	// Menu interativo
+	// Interactive Menu
 	reader := bufio.NewReader(os.Stdin)
 	const udpTimeout = 2 * time.Second
 
 	for {
-		fmt.Printf("\n========== COMARCA - %s ==========\n", strings.ToUpper(nomeComarca))
-		fmt.Println("1 (E) - Entrar com ação")
-		fmt.Println("2 (B) - Buscar ações")
-		fmt.Println("3 (C) - Listar as comarcas")
-		fmt.Println("4 (V) - Listar as varas")
-		fmt.Println("5 (A) - Adicionar vara")
-		fmt.Println("6 (D) - Remover vara")
-		fmt.Println("7 (S) - Sair")
-		fmt.Println("8 (R) - Refresh (limpar tela)")
-		fmt.Print("Sua opção> ")
+		fmt.Printf("\n========== DISTRICT - %s ==========\n", strings.ToUpper(nameDistrict))
+		fmt.Println("1 (E) - Enter a lawsuit")
+		fmt.Println("2 (S) - Search for lawsuits")
+		fmt.Println("3 (D) - List the districts")
+		fmt.Println("4 (T) - List the trials")
+		fmt.Println("5 (A) - Add a trial")
+		fmt.Println("6 (M) - Remove a trial")
+		fmt.Println("7 (Q) - Quit")
+		fmt.Println("8 (R) - Refresh (clear the screen)")
+		fmt.Print("Your option> ")
 
-		linha, _ := reader.ReadString('\n')
-		opc := strings.TrimSpace(linha)
+		line, _ := reader.ReadString('\n')
+		opt := strings.TrimSpace(line)
 
-		switch opc {
+		switch opt {
 
-		case "r", "R":
+		case "8", "r", "R":
 			clearScreen()
 			continue
 
 		case "1", "E", "e":
-			// 1) Tentar atualizar lista de comarcas no tribunal
-			fmt.Println("\nAtualizando lista de comarcas no tribunal...")
-			if err := atualizarComarcasDoTribunal(*tribunalAddr, cl); err != nil {
-				fmt.Println("Aviso: não foi possível contactar o tribunal. Usando lista local.")
-				log.Printf("Falha ao atualizar comarcas do tribunal antes de entrar com ação: %v", err)
+			// 1) Try to update the districts' list in the Court
+			fmt.Println("\nUpdating the districts' list in the Court...")
+			if err := updateDistrictsOfCourt(*courtAddr, dl); err != nil {
+				fmt.Println("Warning: it was not possible to connect to the Court. Using local list.")
+				log.Printf("Fault while updating the Court's districts before adding a new lawsuit: %v", err)
 			} else {
-				fmt.Println("Lista de comarcas atualizada a partir do tribunal.")
+				fmt.Println("Districts' list updated from the Court.")
 			}
 
-			// 2) Perguntar dados da nova ação
-			fmt.Print("\nAutor: ")
-			autor, _ := reader.ReadString('\n')
-			autor = strings.TrimSpace(autor)
+			// 2) Ask for new lawsuit data 
+			fmt.Print("\nPlaintiff: ")
+			plaintiff, _ := reader.ReadString('\n')
+			plaintiff = strings.TrimSpace(plaintiff)
 
-			fmt.Print("Réu: ")
-			reu, _ := reader.ReadString('\n')
-			reu = strings.TrimSpace(reu)
+			fmt.Print("Defendant: ")
+			defendant, _ := reader.ReadString('\n')
+			defendant = strings.TrimSpace(defendant)
 
-			fmt.Print("Causa de pedir (ID numérico): ")
-			causaStr, _ := reader.ReadString('\n')
-			causaStr = strings.TrimSpace(causaStr)
-			causaID, err := strconv.Atoi(causaStr)
-			if err != nil || causaID <= 0 {
-				fmt.Println("Causa de pedir inválida (deve ser número inteiro).")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("Cause of action (numeric ID): ")
+			causeStr, _ := reader.ReadString('\n')
+			causeStr = strings.TrimSpace(causeStr)
+			causeID, err := strconv.Atoi(causeStr)
+			if err != nil || causeID <= 0 {
+				fmt.Println("Invalid cause of action (must be an integer).")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			fmt.Print("Pedidos (IDs numéricos separados por vírgula; ex.: 10 ou 10,20,30): ")
+			fmt.Print("Claims (numeric IDs separated by commas; ex.: 10 or 10,20,30): ")
 			pedStr, _ := reader.ReadString('\n')
 			pedStr = strings.TrimSpace(pedStr)
-			pedidos, err := parsePedidosInput(pedStr)
+			claims, err := parseClaimsInput(pedStr)
 			if err != nil {
-				fmt.Println("Erro:", err)
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Println("Error:", err)
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			nova := NovaAcao{
-				Autor:   autor,
-				Reu:     reu,
-				CausaID: causaID,
-				Pedidos: pedidos,
+			new_lawsuit := NewLawsuit{
+				Plaintiff: plaintiff,
+				Defendant: defendant,
+				CauseID:   causeID,
+				Claims:    claims,
 			}
 
-			fmt.Println("\nIniciando verificação de distribuição da ação...")
-			fmt.Println("1) Coisa julgada")
-			// 1) COISA JULGADA
-			respCJ, err := consultarVarasLocalStage(vl, "coisa_julgada", nova, udpTimeout)
-			if err == nil && respCJ != nil && respCJ.Match == "coisa_julgada" {
-				fmt.Println("\n*** COISA JULGADA ***")
-				fmt.Println("Foi encontrada ação idêntica (mesmo autor, réu, causa de pedir e pedidos) já extinta COM resolução de mérito.")
-				fmt.Printf("Comarca: %s\n", respCJ.ComarcaNome)
-				fmt.Printf("Vara: ID %d (%s)\n", respCJ.VaraID, respCJ.VaraAddr)
-				fmt.Printf("Identificação da ação: %s\n", respCJ.AcaoID)
-				fmt.Println("Não é possível ingressar com nova ação idêntica, pois há trânsito em julgado.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Println("\nStarting the verification for the lawsuit distribution...")
+			fmt.Println("1) Res judicata")
+			// 1) RES JUDICATA 
+			respRJ, err := verifyLocalTrialsStage(tl, "res_judicata", new_lawsuit, udpTimeout)
+			if err == nil && respRJ != nil && respRJ.Match == "res_judicata" {
+				fmt.Println("\n*** RES JUDICATA	***")
+				fmt.Println("It was found an identical lawsuit (same plaintiff, defendant, cause of action and claims) of already judged lawsuit WITH merits resolution.")
+				fmt.Printf("District: %s\n", respRJ.DistrictName)
+				fmt.Printf("Trial: ID %d (%s)\n", respRJ.TrialID, respRJ.TrialAddr)
+				fmt.Printf("Lawsuit identification: %s\n", respRJ.LawsuitID)
+				fmt.Println("It is not possible to create a new identical lawsuit, because there is already final judgment.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			// Se não achou nada localmente, consulta as OUTRAS comarcas
-			if respCJ == nil || !respCJ.Success || respCJ.Match == "" || respCJ.Match == "nenhuma" {
-				respCJ, err = consultarOutrasComarcasStage(nomeComarca, cl, "coisa_julgada", nova, udpTimeout)
+			// If not found locally, search in the OTHERS districts
+			if respRJ == nil || !respRJ.Success || respRJ.Match == "" || respRJ.Match == "none" {
+				respRJ, err = verifyOtherDistrictsStage(nameDistrict, dl, "res_judicata", new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Aviso: erro ao consultar outras comarcas para COISA JULGADA:", err)
+					fmt.Println("Warning: error while verifying other districts for RES JUDICATA:", err)
 				}
 			}
 
-			if respCJ != nil && respCJ.Success && respCJ.Match == "coisa_julgada" {
-				fmt.Println("\n*** COISA JULGADA ***")
-				fmt.Println("Foi encontrada ação idêntica (mesmo autor, réu, causa de pedir e pedidos) já extinta COM resolução de mérito.")
-				fmt.Printf("Comarca: %s (ID %d)\n", respCJ.ComarcaNome, respCJ.ComarcaID)
-				fmt.Printf("Vara: ID %d (%s)\n", respCJ.VaraID, respCJ.VaraAddr)
-				fmt.Printf("Identificação da ação: %s\n", respCJ.AcaoID)
-				fmt.Println("Não é possível ingressar com nova ação idêntica, pois há trânsito em julgado.")
+			if respRJ != nil && respRJ.Success && respRJ.Match == "res_judicata" {
+				fmt.Println("\n*** RES JUDICATA ***")
+				fmt.Println("It was found identical lawsuit (same plaintiff, defendant, cause of action and claims) already judged WITH merits resolution.")
+				fmt.Printf("District: %s (ID %d)\n", respRJ.DistrictName, respRJ.DistrictID)
+				fmt.Printf("Trial: ID %d (%s)\n", respRJ.TrialID, respRJ.TrialAddr)
+				fmt.Printf("Lawsuit identification: %s\n", respRJ.LawsuitID)
+				fmt.Println("It is not possible to create a new identical lawsuit, because there is already final judgment.")
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				bufio.NewReader(os.Stdin).ReadString('\n')
 				clearScreen()
 				continue
 			}
 
 			if err != nil {
-				fmt.Println("Aviso: falha ao verificar coisa julgada nas varas locais:", err)
+				fmt.Println("Warning: fault while verifying res judicata in the local trials:", err)
 			}
 
-			fmt.Println("2) Litispendência")
-			// 2) LITISPENDÊNCIA
-			respLit, err := consultarVarasLocalStage(vl, "litispendencia", nova, udpTimeout)
+			fmt.Println("2) Lis pendens")
+			// 2) LIS PENDENS
+			respLit, err := verifyLocalTrialsStage(tl, "lis_pendens", new_lawsuit, udpTimeout)
 
-			// Se não achou nada localmente, consulta as OUTRAS comarcas
-			if respLit == nil || !respLit.Success || respLit.Match == "" || respLit.Match == "nenhuma" {
-				respLit, err = consultarOutrasComarcasStage(nomeComarca, cl, "litispendencia", nova, udpTimeout)
+			// If nout found locally, search in the OTHERS districts
+			if respLit == nil || !respLit.Success || respLit.Match == "" || respLit.Match == "none" {
+				respLit, err = verifyOtherDistrictsStage(nameDistrict, dl, "lis_pendens", new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Aviso: erro ao consultar outras comarcas para LITISPENDÊNCIA:", err)
+					fmt.Println("Warning: error while verifying others districts for LIS PENDENS:", err)
 				}
 			}
 
-			if respLit != nil && respLit.Success && respLit.Match == "litispendencia" {
-				fmt.Println("\n*** LITISPENDÊNCIA ***")
-				fmt.Println("Foi encontrada ação idêntica (mesmo autor, réu, causa de pedir e pedidos) na lista de ações ATIVAS.")
-				fmt.Printf("Comarca: %s\n", respLit.ComarcaNome)
-				fmt.Printf("Vara: ID %d (%s)\n", respLit.VaraID, respLit.VaraAddr)
-				fmt.Printf("Identificação da ação ativa: %s\n", respLit.AcaoID)
-				fmt.Println("Não será criada nova ação, pois se trata de litispendência.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+			if respLit != nil && respLit.Success && respLit.Match == "lis_pendens" {
+				fmt.Println("\n*** LIS PENDENS ***")
+				fmt.Println("It was found identical lawsuit (same plaintiff, defendant, cause of action and claims) in the ACTIVE lawsuits list.")
+				fmt.Printf("District: %s\n", respLit.DistrictName)
+				fmt.Printf("Trial: ID %d (%s)\n", respLit.TrialID, respLit.TrialAddr)
+				fmt.Printf("Identification of active lawsuit: %s\n", respLit.LawsuitID)
+				fmt.Println("A new lawsuit will not be created, because it is case of lis pendens.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
 			if err != nil {
-				fmt.Println("Aviso: falha ao verificar litispendência nas varas locais:", err)
+				fmt.Println("Warning: fault while verifying lis pendens in the local trials:", err)
 			}
 
-			fmt.Println("3) Pedido reiterado (extinta SEM resolução de mérito)")
-			// 3) PEDIDO REITERADO
-			respPR, err := consultarVarasLocalStage(vl, "pedido_reiterado", nova, udpTimeout)
+			fmt.Println("3) Repeated request (judged WITHOUT merits resolution)")
+			// 3) REPEATED REQUEST 
+			respRR, err := verifyLocalTrialsStage(tl, "repeated_request", new_lawsuit, udpTimeout)
 
-			// Se não encontrou nada localmente, consultar OUTRAS comarcas
-			if respPR == nil || !respPR.Success || respPR.Match == "" || respPR.Match == "nenhuma" {
-				respPR, err = consultarOutrasComarcasStage(nomeComarca, cl, "pedido_reiterado", nova, udpTimeout)
+			// If not found locally, search in the OTHERS districts 
+			if respRR == nil || !respRR.Success || respRR.Match == "" || respRR.Match == "none" {
+				respRR, err = verifyOtherDistrictsStage(nameDistrict, dl, "repeated_request", new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Aviso: erro ao consultar outras comarcas para PEDIDO REITERADO:", err)
+					fmt.Println("Warning: error while verifying others districts for REPEATED REQUEST:", err)
 				}
 			}
 
-			if respPR != nil && respPR.Success && respPR.Match == "pedido_reiterado" {
-				fmt.Println("\n*** PEDIDO REITERADO ***")
-				fmt.Println("Foi encontrada ação idêntica nas ações extintas SEM resolução de mérito.")
-				fmt.Printf("Comarca: %s\n", respPR.ComarcaNome)
-				fmt.Printf("Vara: ID %d (%s)\n", respPR.VaraID, respPR.VaraAddr)
-				fmt.Printf("Identificação da ação extinta: %s\n", respPR.AcaoID)
-				fmt.Println("Será criada nova ação (novo número sequencial) na MESMA vara onde houve a extinção sem resolução de mérito.")
+			if respRR != nil && respRR.Success && respRR.Match == "repeated_request" {
+				fmt.Println("\n*** REPEATED REQUEST ***")
+				fmt.Println("Its was found identical lawsuit in the lawsuits judged WITHOUT merits resolution.")
+				fmt.Printf("District: %s\n", respRR.DistrictName)
+				fmt.Printf("Trial: ID %d (%s)\n", respRR.TrialID, respRR.TrialAddr)
+				fmt.Printf("Identification for the already judged lawsuit: %s\n", respRR.LawsuitID)
+				fmt.Println("A new lawsuit will be created (new sequential number) in the SAME trial where take place the jugement without merits resolution.")
 
-				createResp, err := criarAcaoNaVaraAddr(respPR.VaraAddr, "pedido_reiterado", respPR.AcaoID, nova, udpTimeout)
+				createResp, err := createLawsuitInTrialAddr(respRR.TrialAddr, "repeated_request", respRR.LawsuitID, new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Erro ao criar ação por pedido reiterado:", err)
+					fmt.Println("Error while creating lawsuit due repetead request:", err)
 				} else if !createResp.Success {
-					fmt.Println("Vara recusou criação de ação por pedido reiterado:", createResp.Message)
+					fmt.Println("Trial refused the lawsuit creation due repeated request:", createResp.Message)
 				} else {
-					fmt.Printf("\nNova ação criada como PEDIDO REITERADO.\nIdentificação da nova ação: %s\n", createResp.AcaoID)
+					fmt.Printf("\nNew lawsuit created as REPEATED REQUEST.\nIdentification for the new lawsuit: %s\n", createResp.LawsuitID)
 				}
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
 			if err != nil {
-				fmt.Println("Aviso: falha ao verificar pedido reiterado nas varas locais:", err)
+				fmt.Println("Warning: fault while verifying repeated request in the local trials:", err)
 			}
 
-			fmt.Println("4) Continência")
-			// 4) CONTINÊNCIA
-			respCont, err := consultarVarasLocalStage(vl, "continencia", nova, udpTimeout)
+			fmt.Println("4) Joinder")
+			// 4) JOINDER (CONTAINMENT)
+			respCont, err := verifyLocalTrialsStage(tl, "joinder", new_lawsuit, udpTimeout)
 
-			// Se não encontrou nada localmente, consultar OUTRAS comarcas
-			if respCont == nil || !respCont.Success || respCont.Match == "" || respCont.Match == "nenhuma" {
-				respCont, err = consultarOutrasComarcasStage(nomeComarca, cl, "continencia", nova, udpTimeout)
+			// If not found locally, verify OTHERS districts
+			if respCont == nil || !respCont.Success || respCont.Match == "" || respCont.Match == "none" {
+				respCont, err = verifyOtherDistrictsStage(nameDistrict, dl, "joinder", new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Aviso: erro ao consultar outras comarcas para CONTINÊNCIA:", err)
+					fmt.Println("Warning: error while verifying others districts for JOINDER:", err)
 				}
 			}
 
-			if respCont != nil && respCont.Success && (respCont.Match == "continencia_contida" || respCont.Match == "continencia_continente") {
-				if respCont.Match == "continencia_contida" {
-					fmt.Println("\n*** CONTINÊNCIA (AÇÃO CONTIDA) ***")
-					fmt.Println("Foi encontrada ação CONTINENTE (pedido maior) com mesmas partes e mesma causa de pedir.")
-					fmt.Printf("Comarca: %s\n", respCont.ComarcaNome)
-					fmt.Printf("Vara: ID %d (%s)\n", respCont.VaraID, respCont.VaraAddr)
-					fmt.Printf("Identificação da ação CONTINENTE: %s\n", respCont.AcaoID)
-					fmt.Println("Não será criada nova ação, pois o pedido da nova ação é CONTIDO na ação CONTINENTE.")
-				} else if respCont.Match == "continencia_continente" {
-					fmt.Println("\n*** CONTINÊNCIA (AÇÃO CONTINENTE) ***")
-					fmt.Println("Foi encontrada ação CONTIDA (pedido menor) com mesmas partes e mesma causa de pedir.")
-					fmt.Printf("Comarca: %s\n", respCont.ComarcaNome)
-					fmt.Printf("Vara: ID %d (%s)\n", respCont.VaraID, respCont.VaraAddr)
-					fmt.Printf("Identificação da ação CONTIDA (a ser ampliada): %s\n", respCont.AcaoID)
-					fmt.Println("As ações serão REUNIDAS, adicionando os pedidos da nova ação ao rol de pedidos da nova ação CONTINENTE.")
+			if respCont != nil && respCont.Success && (respCont.Match == "joinder_contained" || respCont.Match == "joinder_continent") {
+				if respCont.Match == "joinder_contained" {
+					fmt.Println("\n*** JOINDER (CONTAINED LAWSUIT) ***")
+					fmt.Println("It was found CONTINENT lawsuit (bigger claim) with same parties and same cause of action.")
+					fmt.Printf("District: %s\n", respCont.DistrictName)
+					fmt.Printf("Trial: ID %d (%s)\n", respCont.TrialID, respCont.TrialAddr)
+					fmt.Printf("Identification of CONTINENT lawsuit: %s\n", respCont.LawsuitID)
+					fmt.Println("A new lawsuit will not be created because the new lawsuit's claim is CONTAINED in the CONTINENT lawsuit.")
+				} else if respCont.Match == "joinder_continent" {
+					fmt.Println("\n*** JOINDER (CONTINENT LAWSUIT) ***")
+					fmt.Println("It was found a CONTAINED lawsuit (lower claim) with same parties and same cause of action.")
+					fmt.Printf("District: %s\n", respCont.DistrictName)
+					fmt.Printf("Trial: ID %d (%s)\n", respCont.TrialID, respCont.TrialAddr)
+					fmt.Printf("Identification of CONTAINED lawsuit (to be expanded): %s\n", respCont.LawsuitID)
+					fmt.Println("The lawsuits will be CONSOLIDATED, adding the new lawsuit claims to the list of claims for the CONTINENT lawsuit.")
 
-					_, err := enviarMergePedidosParaVaraAddr(respCont.VaraAddr, respCont.AcaoID, nova.Pedidos, udpTimeout)
+					_, err := sendMergeClaimsToTrialAddr(respCont.TrialAddr, respCont.LawsuitID, new_lawsuit.Claims, udpTimeout)
 					if err != nil {
-						fmt.Println("Erro ao enviar merge de pedidos para a vara:", err)
+						fmt.Println("Error while sending merge of claims to the trial:", err)
 					} else {
-						fmt.Println("Pedidos da nova ação enviados para serem agregados à nova ação CONTINENTE (antiga ação CONTIDA).")
+						fmt.Println("New lawsuit's claims sent to be consolidated at new CONTINENT lawsuit (old CONTAINED lawsuit).")
 					}
 				}
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
 			if err != nil {
-				fmt.Println("Aviso: falha ao verificar continência nas varas locais:", err)
+				fmt.Println("Warning: fault while verifying joinder in the local trials:", err)
 			}
 
-			fmt.Println("5) Conexão")
-			// 5) CONEXÃO
-			respConx, err := consultarVarasLocalStage(vl, "conexao", nova, udpTimeout)
+			fmt.Println("5) Connection")
+			// 5) CONNECTION
+			respConx, err := verifyLocalTrialsStage(tl, "connection", new_lawsuit, udpTimeout)
 
-			// Se não encontrou nada localmente, consultar OUTRAS comarcas
-			if respConx == nil || !respConx.Success || respConx.Match == "" || respConx.Match == "nenhuma" {
-				respConx, err = consultarOutrasComarcasStage(nomeComarca, cl, "conexao", nova, udpTimeout)
+			// If not found locally, verify OTHERS districts
+			if respConx == nil || !respConx.Success || respConx.Match == "" || respConx.Match == "none" {
+				respConx, err = verifyOtherDistrictsStage(nameDistrict, dl, "connection", new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Aviso: erro ao consultar outras comarcas para CONEXÃO:", err)
+					fmt.Println("Warning: error while verifying other districts for CONNECTION:", err)
 				}
 			}
 
-			if respConx != nil && respConx.Success && respConx.Match == "conexao" {
-				fmt.Println("\n*** CONEXÃO ***")
-				fmt.Println("Foi encontrada ação CONEXA (mesma causa de pedir e/ou mesmo(s) pedido(s)).")
-				fmt.Printf("Comarca: %s\n", respConx.ComarcaNome)
-				fmt.Printf("Vara: ID %d (%s)\n", respConx.VaraID, respConx.VaraAddr)
-				fmt.Printf("Identificação da ação já existente: %s\n", respConx.AcaoID)
-				fmt.Println("A nova ação será criada na MESMA vara, para julgamento conjunto (reunião por conexão).")
+			if respConx != nil && respConx.Success && respConx.Match == "connection" {
+				fmt.Println("\n*** CONNECTION ***")
+				fmt.Println("It was found CONNECTED lawsuit (same cause of action and/or same claims).")
+				fmt.Printf("District: %s\n", respConx.DistrictName)
+				fmt.Printf("Trial: ID %d (%s)\n", respConx.TrialID, respConx.TrialAddr)
+				fmt.Printf("Identification of already existent lawsuit: %s\n", respConx.LawsuitID)
+				fmt.Println("The new lawsuit will be created in the SAME trial, for joint judgment (due the connection).")
 
-				createResp, err := criarAcaoNaVaraAddr(respConx.VaraAddr, "conexao", respConx.AcaoID, nova, udpTimeout)
+				createResp, err := createLawsuitInTrialAddr(respConx.TrialAddr, "connection", respConx.LawsuitID, new_lawsuit, udpTimeout)
 				if err != nil {
-					fmt.Println("Erro ao criar ação por conexão:", err)
+					fmt.Println("Error while creating lawsuit by connection:", err)
 				} else if !createResp.Success {
-					fmt.Println("Vara recusou criação de ação por conexão:", createResp.Message)
+					fmt.Println("Trial refused to create lawsuit by connection:", createResp.Message)
 				} else {
-					fmt.Printf("\nNova ação criada como CONEXA.\nIdentificação da nova ação: %s\n", createResp.AcaoID)
-					fmt.Println("A vara (lado servidor) deve registrar internamente a relação de ações conexas para julgamento conjunto.")
+					fmt.Printf("\nNew lawsuit created as CONNECTED.\nIdentification of the new lawsuit: %s\n", createResp.LawsuitID)
+					fmt.Println("The trial (server side) must internally register the connection between the connected lawsuits for joint judgment.")
 				}
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
 			if err != nil {
-				fmt.Println("Aviso: falha ao verificar conexão nas varas locais:", err)
+				fmt.Println("Warning: fault while verifying connection in the local trials:", err)
 			}
 
-			fmt.Println("6) Distribuição LIVRE")
-			// 6) DISTRIBUIÇÃO LIVRE
-			msg, err := distribuirAcaoLivre(nomeComarca, vl, nova, udpTimeout)
+			fmt.Println("6) FREE Distribution")
+			// 6) FREE DISTRIBUTION
+			msg, err := lawsuitFreeDistribution(nameDistrict, tl, new_lawsuit, udpTimeout)
 			if err != nil {
-				fmt.Println("Erro ao realizar distribuição livre:", err)
+				fmt.Println("Error while doing a free distribution:", err)
 			} else {
 				fmt.Println()
 				fmt.Println(msg)
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
-		case "2", "B", "b":
-			// ---------- BUSCAR AÇÕES EM TODAS AS VARAS DA COMARCA ----------
-			varas := vl.GetAll()
-			if len(varas) == 0 {
-				fmt.Println("Não há varas cadastradas nesta comarca.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+		case "2", "S", "s":
+			// ---------- SEARCH FOR LAWSUITS IN ALL DISTRICT'S TRIALS ----------
+			trials := tl.GetAll()
+			if len(trials) == 0 {
+				fmt.Println("There are no trials registered in this district.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
@@ -1677,233 +1683,234 @@ func main() {
 
 			clearScreen()
 			fmt.Println()
-			fmt.Println("Buscar ações em TODAS as varas desta comarca.")
+			fmt.Println("Search for lawsuits in ALL the trials of this district.")
 			fmt.Println("Buscar por:")
-			fmt.Println("1 (I) - ID da ação")
-			fmt.Println("2 (A) - Autor")
-			fmt.Println("3 (R) - Réu")
-			fmt.Println("4 (C) - Causa de pedir (número exato)")
-			fmt.Println("5 (P) - Pedido (número exato)")
-			fmt.Println("6 (S) - Retornar ao menu")
-			fmt.Print("Sua opção> ")
-			campoStr, _ := reader.ReadString('\n')
-			campoStr = strings.TrimSpace(campoStr)
+			fmt.Println("Search for:")
+			fmt.Println("1 (I) - Lawsuit ID")
+			fmt.Println("2 (P) - Plaintiff")
+			fmt.Println("3 (D) - Defendant")
+			fmt.Println("4 (C) - Cause of action (exact number)")
+			fmt.Println("5 (M) - Claim (exact number)")
+			fmt.Println("6 (R) - Return to  menu")
+			fmt.Print("Your option> ")
+			fieldStr, _ := reader.ReadString('\n')
+			fieldStr = strings.TrimSpace(fieldStr)
 
-			var campo string
-			switch campoStr {
+			var field string
+			switch fieldStr {
 			case "1", "I", "i":
-				campo = "id"
-			case "2", "A", "a":
-				campo = "autor"
-			case "3", "R", "r":
-				campo = "reu"
+				field = "id"
+			case "2", "P", "p":
+				field = "plaintiff"
+			case "3", "D", "d":
+				field = "defendant"
 			case "4", "C", "c":
-				campo = "causa"
-			case "5", "P", "p":
-				campo = "pedido"
-			case "6", "S", "s":
+				field = "cause"
+			case "5", "M", "m":
+				field = "claim"
+			case "6", "R", "r":
 				clearScreen()
 				continue
 			default:
-				fmt.Println("Opção de campo inválida.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Println("Invalid option.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			fmt.Print("Valor para busca> ")
+			fmt.Print("Value for serach> ")
 			val, _ := reader.ReadString('\n')
 			val = strings.TrimSpace(val)
 			if val == "" {
-				fmt.Println("Valor de busca vazio.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Println("Empty search value.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			fmt.Println("\nRealizando busca em todas as varas desta comarca...")
-			totalEncontradas := 0
+			fmt.Println("\nSearching in all trials of this district...")
+			totalFound := 0
 
-			for _, v := range varas {
-				resp, err := buscarAcoesNaVara(v.Endereco, campo, val, udpTimeout)
+			for _, t := range trials {
+				resp, err := searchLawsuitsAtTrial(t.Address, field, val, udpTimeout)
 				if err != nil {
-					fmt.Printf("Aviso: falha ao buscar na Vara ID %d (%s): %v\n", v.ID, v.Endereco, err)
+					fmt.Printf("Warning: fault while searching in the Trial ID %d (%s): %v\n", t.ID, t.Address, err)
 					continue
 				}
 				if !resp.Success {
-					fmt.Printf("Aviso: Vara ID %d (%s) retornou erro: %s\n", v.ID, v.Endereco, resp.Message)
+					fmt.Printf("Warning: Trial ID %d (%s) returned error: %s\n", t.ID, t.Address, resp.Message)
 					continue
 				}
-				if len(resp.Resultados) == 0 {
+				if len(resp.Results) == 0 {
 					continue
 				}
 
-				varaID := resp.VaraID
-				varaAddr := resp.VaraAddr
-				if varaID == 0 {
-					varaID = v.ID
+				trialID := resp.TrialID
+				trialAddr := resp.TrialAddr
+				if trialID == 0 {
+					trialID = t.ID
 				}
-				if varaAddr == "" {
-					varaAddr = v.Endereco
+				if trialAddr == "" {
+					trialAddr = t.Address
 				}
 
-				for _, r := range resp.Resultados {
-					if totalEncontradas == 0 {
-						fmt.Println("\n--- RESULTADOS DA BUSCA ---")
+				for _, r := range resp.Results {
+					if totalFound == 0 {
+						fmt.Println("\n--- SEARCH RESULTS ---")
 					}
-					totalEncontradas++
-					fmt.Printf("[Vara %d - %s] [%s] ID: %s | Autor: %s | Réu: %s | Causa: %d | Pedidos: %v\n",
-						varaID, varaAddr,
-						r.Lista,
-						r.ID, r.Autor, r.Reu, r.CausaPedir, r.Pedidos)
+					totalFound++
+					fmt.Printf("[Trial %d - %s] [%s] ID: %s | Plaintiff: %s | Defendant: %s | Cause: %d | Claims: %v\n",
+						trialID, trialAddr,
+						r.List,
+						r.ID, r.Plaintiff, r.Defendant, r.CauseAction, r.Claims)
 				}
 			}
 
-			if totalEncontradas == 0 {
-				fmt.Println("Nenhuma ação encontrada em nenhuma vara desta comarca.")
+			if totalFound == 0 {
+				fmt.Println("no lawsuit found in this district's trials.")
 			} else {
-				fmt.Printf("\nTotal de ações encontradas: %d\n", totalEncontradas)
+				fmt.Printf("\nTotal of found lawsuits: %d\n", totalFound)
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
-		case "3", "C", "c":
-			fmt.Println("\nBuscando lista de comarcas no tribunal...")
-			err := atualizarComarcasDoTribunal(*tribunalAddr, cl)
+		case "3", "D", "d":
+			fmt.Println("\nSearching districts' list in the Court...")
+			err := updateDistrictsOfCourt(*courtAddr, dl)
 			if err != nil {
-				fmt.Println("Não foi possível contactar o tribunal. Usando lista local.")
-				log.Printf("Falha ao atualizar comarcas do tribunal: %v", err)
+				fmt.Println("It was not possible to connect to the Court. Using local list.")
+				log.Printf("Fault while updating the Court's districts: %v", err)
 			} else {
-				fmt.Println("Lista de comarcas atualizada a partir do tribunal.")
+				fmt.Println("Districts list updated from the Court.")
 			}
 
-			comarcas := cl.GetAll()
-			if len(comarcas) == 0 {
-				fmt.Println("(Nenhuma comarca na lista)")
+			districts := dl.GetAll()
+			if len(districts) == 0 {
+				fmt.Println("(none district in the list)")
 			} else {
-				fmt.Println("\n--- COMARCAS ---")
-				for _, c := range comarcas {
-					fmt.Printf("ID %d | %s | %s | %d varas\n",
-						c.ID, c.Nome, c.Endereco, c.Varas)
+				fmt.Println("\n--- DISTRICTS ---")
+				for _, d := range districts {
+					fmt.Printf("ID %d | %s | %s | %d trials\n",
+						d.ID, d.Name, d.Address, d.Trials)
 				}
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
-		case "4", "V", "v":
-			varas := vl.GetAll()
-			if len(varas) == 0 {
-				fmt.Println("(Nenhuma vara cadastrada para esta comarca)")
+		case "4", "T", "t":
+			trials := tl.GetAll()
+			if len(trials) == 0 {
+				fmt.Println("(no trials registered for this district)")
 			} else {
-				fmt.Println("\n--- VARAS ---")
-				for _, v := range varas {
-					fmt.Printf("ID %d | Endereço UDP: %s\n", v.ID, v.Endereco)
+				fmt.Println("\n--- TRIALS ---")
+				for _, t := range trials {
+					fmt.Printf("ID %d | Endereço UDP: %s\n", t.ID, t.Address)
 				}
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
 		case "5", "A", "a":
-			fmt.Print("Endereço UDP da nova vara (ex: 127.0.0.1:9201): ")
+			fmt.Print("UDP address for the new trial (ex: 127.0.0.1:9201): ")
 			endStr, _ := reader.ReadString('\n')
 			endStr = strings.TrimSpace(endStr)
 			if endStr == "" {
-				fmt.Println("Endereço inválido.")
+				fmt.Println("Invalid address.")
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			v, err := vl.Add(endStr)
+			t, err := tl.Add(endStr)
 			if err != nil {
-				fmt.Println("Erro ao adicionar vara:", err)
-				log.Printf("Erro ao adicionar vara: %v", err)
+				fmt.Println("Error while adding trial:", err)
+				log.Printf("Error while adding trial: %v", err)
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 			fmt.Println()
-			fmt.Printf("Vara adicionada: ID %d, endereço %s\n", v.ID, v.Endereco)
+			fmt.Printf("Trial added: ID %d, address %s\n", t.ID, t.Address)
 
-			totalVaras := vl.Count()
-			if err := enviarUpdateVaras(*tribunalAddr, nomeComarca, totalVaras); err != nil {
-				fmt.Println("Aviso: não foi possível notificar o tribunal sobre o novo número de varas.")
-				log.Printf("Erro ao enviar update_varas ao tribunal: %v", err)
+			totalTrials := tl.Count()
+			if err := sendUpdateTrials(*courtAddr, nameDistrict, totalTrials); err != nil {
+				fmt.Println("Warning: it was not possible notify the Court about the number of trials.")
+				log.Printf("Error while sending update_trials to the Court: %v", err)
 			} else {
-				fmt.Println("Tribunal notificado sobre o novo número de varas.")
+				fmt.Println("Court notified about the number of trials.")
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
-		case "6", "D", "d":
-			fmt.Print("ID da vara a remover: ")
+		case "6", "M", "m":
+			fmt.Print("ID da trial to be removed: ")
 			idStr, _ := reader.ReadString('\n')
 			idStr = strings.TrimSpace(idStr)
 			id, err := strconv.Atoi(idStr)
 			if err != nil {
-				fmt.Println("ID inválido.")
+				fmt.Println("Invalid ID.")
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			v, err := vl.RemoveByID(id)
+			t, err := tl.RemoveByID(id)
 			if err != nil {
-				fmt.Println("Erro ao remover vara:", err)
-				log.Printf("Erro ao remover vara: %v", err)
+				fmt.Println("Error while removing trial:", err)
+				log.Printf("Error while removing trial: %v", err)
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 			fmt.Println()
-			fmt.Printf("Vara removida: ID %d, endereço %s\n", v.ID, v.Endereco)
+			fmt.Printf("Trial removed: ID %d, address %s\n", t.ID, t.Address)
 
-			totalVaras := vl.Count()
-			if err := enviarUpdateVaras(*tribunalAddr, nomeComarca, totalVaras); err != nil {
-				fmt.Println("Aviso: não foi possível notificar o tribunal sobre o novo número de varas.")
-				log.Printf("Erro ao enviar update_varas ao tribunal: %v", err)
+			totalTrials := tl.Count()
+			if err := sendUpdateTrials(*courtAddr, nameDistrict, totalTrials); err != nil {
+				fmt.Println("Warning: it was not possible notify the Court about the number of trials.")
+				log.Printf("Error while sending update_trials to the Court: %v", err)
 			} else {
-				fmt.Println("Tribunal notificado sobre o novo número de varas.")
+				fmt.Println("Court notified about the new number of trials.")
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
-		case "7", "S", "s":
-			// Sair
-			if err := vl.Save(); err != nil {
-				log.Printf("Erro ao salvar varas ao sair: %v", err)
+		case "7", "Q", "q":
+			// Quit
+			if err := tl.Save(); err != nil {
+				log.Printf("Error while saving trials during quit: %v", err)
 			}
-			if err := cl.Save(); err != nil {
-				log.Printf("Erro ao salvar comarcas ao sair: %v", err)
+			if err := tl.Save(); err != nil {
+				log.Printf("Error while saving trials during quit: %v", err)
 			}
-			salvarNomeComarca(nomeComarcaFile, nomeComarca)
-			salvarEnderecoComarca(addrComarcaFile, comarcaAddr)
-			fmt.Println("Dados salvos. Encerrando comarca.")
+			saveNameDistrict(nameDistrictFile, nameDistrict)
+			saveAddressDistrict(addrDistrictFile, districtAddr)
+			fmt.Println("Data saved. Finishing district.")
 			return
 
 		default:
-			fmt.Println("Opção inválida.")
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Println("Invalid option.")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 		}

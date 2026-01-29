@@ -1,23 +1,19 @@
 /***************************************************************************
-	CSC-27 / CE-288 - ITA - 2025, 2º sem. - Profs. Hirata and Juliana
+        Distributed Architecture for Judiciary Processes Distribution
+        ===== Trial Agent ====
 
-	LabExam - Simulador de Tribunal de Justiça Descentralizado
+        Authors:
+                Antonio Gilberto de Moura (A - AGM)
+                Fernado Maurício Gomes (F - FMG)
 
-	Students: 
-	        Antonio Gilberto de Moura (A - AGM)
-			Fernado Maurício Gomes (F - FMG)
-			Rodrigo Freire dos Santos Alencar (R - RFA)
-
-        Rel 1.0.0
-
-        Copyright (c) 2025 by A/F/R.
-        All Rights Reserved.
+        Rel 1.1.0
 
 
-Revision History for comarca.go:
+Revision History for court.go:
 
    Release   Author   Date           Description
-    1.0.0    A/F/R    19/NOV/2025    Initial stable release
+    1.0.0    A/F      19/NoV/2025    Initial stable release
+    1.1.0    A        28/Jan/2026    Translation to English
 
 ***************************************************************************/
 
@@ -39,77 +35,77 @@ import (
 	"os/exec"
 )
 
-// Identificação da release
-const Release = "1.0.0"
+// Release identification
+const Release = "1.1.0"  // Translation to English
 
 
-// ---------- Estruturas de dados ----------
+// ---------- Data Structures ----------
 
-// Ação com ID "ID_Comarca.ID_Vara.Sequência"
-// Agora com lista de pedidos (Pedidos []int) e possível lista de ações conexas.
-// PedidoLegacy serve apenas para ler arquivos antigos (onde havia só um "pedido" int)
-// e é limpado antes de salvar de novo.
-type Acao struct {
-	ID         string   `json:"id"`
-	Autor      string   `json:"autor"`
-	Reu        string   `json:"reu"`
-	CausaPedir int      `json:"causa_pedir"`
-	Pedidos    []int    `json:"pedidos,omitempty"`
-	Conexas    []string `json:"conexas,omitempty"`
+// Lawsuit with ID "ID_District.ID_Trial.Sequence"
+// Now with claims list (Claims []int) and possible connected lawsuits list.
+// ClaimLegacy necessary only for read old files (where there was only one "claim" int)
+// and it is clean before saving again.
+type Lawsuit struct {
+	ID          string   `json:"id"`
+	Plaintiff   string   `json:"plaintiff"`
+	Defendant   string   `json:"defendant"`
+	CauseAction int      `json:"cause_action"`
+	Claims      []int    `json:"claims,omitempty"`
+	Connected   []string `json:"connected,omitempty"`
 
-	// Campo legado para migração de arquivos antigos (onde existia apenas um "pedido" int).
-	PedidoLegacy int `json:"pedido,omitempty"`
+	// Legacy field for migration of old files (where there was only one int "claim").
+	ClaimLegacy int      `json:"claim,omitempty"`
 }
 
-// Estado completo da vara (persistido em JSON)
-type VaraState struct {
-	ComarcaID         int    `json:"comarca_id"`
-	ComarcaNome       string `json:"comarca_nome"`
-	VaraID            int    `json:"vara_id"`
-	VaraAddr          string `json:"vara_addr"`
-	NextSeq           int    `json:"next_seq"`
-	AcoesAtivas       []Acao `json:"acoes_ativas"`
-	AcoesExtComMerito []Acao `json:"acoes_extintas_com_merito"`
-	AcoesExtSemMerito []Acao `json:"acoes_extintas_sem_merito"`
+// Complete status for the trail (persistence in JSON)
+type TrialState struct {
+	DistrictID              int       `json:"district_id"`
+	DistrictName            string    `json:"district_name"`
+	TrialID                 int       `json:"trial_id"`
+	TrialAddr               string    `json:"trial_addr"`
+	NextSeq                 int       `json:"next_seq"`
+	ActivesLawsuits         []Lawsuit `json:"actives_lawsuits"`
+	LawsuitsDisWithMerit    []Lawsuit `json:"lawsuits_dismissed_with_merit"`
+	LawsuitsDisWithoutMerit []Lawsuit `json:"lawsuits_dismissed_without_merit"`
 }
 
-// Wrapper com mutex + caminho do arquivo
-type VaraStore struct {
-	mu      sync.RWMutex
-	state   VaraState
-	arqPath string
+// Wrapper with mutex + file path
+type TrialStore struct {
+	mu       sync.RWMutex
+	state    TrialState
+	filePath string
 }
 
-// Cria um novo store com arquivo (IDs serão preenchidos pelo handshake / espelho)
-func NovaVaraStore(arqPath string) *VaraStore {
-	return &VaraStore{
-		state: VaraState{
-			ComarcaID:         0,
-			ComarcaNome:       "",
-			VaraID:            0,
-			VaraAddr:          "",
-			NextSeq:           1,
-			AcoesAtivas:       []Acao{},
-			AcoesExtComMerito: []Acao{},
-			AcoesExtSemMerito: []Acao{},
+// Creates a new store with file (IDs will be filled by handshake / mirror) 
+func NewTrialStore(filePath string) *TrialStore {
+	return &TrialStore{
+		state: TrialState{
+			DistrictID:              0,
+			DistrictName:            "",
+			TrialID:                 0,
+			TrialAddr:               "",
+			NextSeq:                 1,
+			ActivesLawsuits:         []Lawsuit{},
+			LawsuitsDisWithMerit:    []Lawsuit{},
+			LawsuitsDisWithoutMerit: []Lawsuit{},
 		},
-		arqPath: arqPath,
+		filePath: filePath,
 	}
 }
 
-// migração das ações com campo legado "pedido" -> "pedidos"
-func migrateLegacyPedidos(a *Acao) {
-	if len(a.Pedidos) == 0 && a.PedidoLegacy != 0 {
-		a.Pedidos = []int{a.PedidoLegacy}
-		a.PedidoLegacy = 0
+// Lawsuits migration with legacy field "claim" -> "claims"
+func migrateLegacyClaims(a *Lawsuit) {
+	if len(a.Claims) == 0 && a.ClaimLegacy != 0 {
+		a.Claims = []int{a.ClaimLegacy}
+		a.ClaimLegacy = 0
 	}
 }
 
-func (vs *VaraStore) Load() error {
-	vs.mu.Lock()
-	defer vs.mu.Unlock()
+func (ts *TrialStore) Load() error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 
-	f, err := os.Open(vs.arqPath)
+	f, err := os.Open(ts.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -119,104 +115,104 @@ func (vs *VaraStore) Load() error {
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
-	var st VaraState
+	var st TrialState
 	if err := dec.Decode(&st); err != nil {
 		return err
 	}
 
-	// Migração de pedidos legados
-	for i := range st.AcoesAtivas {
-		migrateLegacyPedidos(&st.AcoesAtivas[i])
+	// Legacy claims migration
+	for i := range st.ActivesLawsuits {
+		migrateLegacyClaims(&st.ActivesLawsuits[i])
 	}
-	for i := range st.AcoesExtComMerito {
-		migrateLegacyPedidos(&st.AcoesExtComMerito[i])
+	for i := range st.LawsuitsDisWithMerit {
+		migrateLegacyClaims(&st.LawsuitsDisWithMerit[i])
 	}
-	for i := range st.AcoesExtSemMerito {
-		migrateLegacyPedidos(&st.AcoesExtSemMerito[i])
+	for i := range st.LawsuitsDisWithoutMerit {
+		migrateLegacyClaims(&st.LawsuitsDisWithoutMerit[i])
 	}
 
 	if st.NextSeq <= 0 {
 		st.NextSeq = 1
 	}
-	vs.state = st
+	ts.state = st
 	return nil
 }
 
-func (vs *VaraStore) Save() error {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
+func (ts *TrialStore) Save() error {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
-	tmp := vs.arqPath + ".tmp"
+	tmp := ts.filePath + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(vs.state); err != nil {
+	if err := enc.Encode(ts.state); err != nil {
 		f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, vs.arqPath)
+	return os.Rename(tmp, ts.filePath)
 }
 
-func (vs *VaraStore) saveLocked() error {
-	tmp := vs.arqPath + ".tmp"
+func (ts *TrialStore) saveLocked() error {
+	tmp := ts.filePath + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(vs.state); err != nil {
+	if err := enc.Encode(ts.state); err != nil {
 		f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, vs.arqPath)
+	return os.Rename(tmp, ts.filePath)
 }
 
-func (vs *VaraStore) nextID() string {
-	seq := vs.state.NextSeq
-	vs.state.NextSeq++
-	return fmt.Sprintf("%d.%d.%d", vs.state.ComarcaID, vs.state.VaraID, seq)
+func (ts *TrialStore) nextID() string {
+	seq := ts.state.NextSeq
+	ts.state.NextSeq++
+	return fmt.Sprintf("%d.%d.%d", ts.state.DistrictID, ts.state.TrialID, seq)
 }
 
-// Cria uma nova ação ATIVA (com lista de pedidos e possível lista de conexas)
-func (vs *VaraStore) CriarAcao(autor, reu string, causa int, pedidos []int, conexas []string) (Acao, error) {
-	vs.mu.Lock()
-	defer vs.mu.Unlock()
+// Creates a new ACTIVE lawsuit (with claims' list and possible connected list)
+func (ts *TrialStore) CreateLawsuit(plaintiff, defendant string, cause int, claims []int, connected []string) (Lawsuit, error) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 
-	id := vs.nextID()
-	a := Acao{
-		ID:         id,
-		Autor:      autor,
-		Reu:        reu,
-		CausaPedir: causa,
-		Pedidos:    append([]int(nil), pedidos...),
-		Conexas:    append([]string(nil), conexas...),
+	id := ts.nextID()
+	a := Lawsuit{
+		ID:          id,
+		Plaintiff:   plaintiff,
+		Defendant:   defendant,
+		CauseAction: cause,
+		Claims:      append([]int(nil), claims...),
+		Connected:   append([]string(nil), connected...),
 	}
-	vs.state.AcoesAtivas = append(vs.state.AcoesAtivas, a)
+	ts.state.ActivesLawsuits = append(ts.state.ActivesLawsuits, a)
 
-	if err := vs.saveLocked(); err != nil {
-		return Acao{}, err
+	if err := ts.saveLocked(); err != nil {
+		return Lawsuit{}, err
 	}
 	return a, nil
 }
 
-// Extingue ação (ativa -> extinta COM mérito)
-func (vs *VaraStore) ExtinguirComMerito(id string) (Acao, error) {
-	vs.mu.Lock()
-	defer vs.mu.Unlock()
+// Dismiss the lawsuit (active -> dismissed WITH merit)
+func (ts *TrialStore) DismissWithMerit(id string) (Lawsuit, error) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 
 	idx := -1
-	var a Acao
-	for i, ac := range vs.state.AcoesAtivas {
+	var a Lawsuit
+	for i, ac := range ts.state.ActivesLawsuits {
 		if ac.ID == id {
 			idx = i
 			a = ac
@@ -224,26 +220,26 @@ func (vs *VaraStore) ExtinguirComMerito(id string) (Acao, error) {
 		}
 	}
 	if idx == -1 {
-		return Acao{}, fmt.Errorf("ação %q não encontrada na lista de ativas", id)
+		return Lawsuit{}, fmt.Errorf("lawsuit %q not found in the actives lawsuits list", id)
 	}
 
-	vs.state.AcoesAtivas = append(vs.state.AcoesAtivas[:idx], vs.state.AcoesAtivas[idx+1:]...)
-	vs.state.AcoesExtComMerito = append(vs.state.AcoesExtComMerito, a)
+	ts.state.ActivesLawsuits = append(ts.state.ActivesLawsuits[:idx], ts.state.ActivesLawsuits[idx+1:]...)
+	ts.state.LawsuitsDisWithMerit = append(ts.state.LawsuitsDisWithMerit, a)
 
-	if err := vs.saveLocked(); err != nil {
-		return Acao{}, err
+	if err := ts.saveLocked(); err != nil {
+		return Lawsuit{}, err
 	}
 	return a, nil
 }
 
-// Extingue ação (ativa -> extinta SEM mérito)
-func (vs *VaraStore) ExtinguirSemMerito(id string) (Acao, error) {
-	vs.mu.Lock()
-	defer vs.mu.Unlock()
+// Dismiss the lawsuit (active -> dismissed WITHOUT merit)
+func (ts *TrialStore) DismissWithoutmerit(id string) (Lawsuit, error) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 
 	idx := -1
-	var a Acao
-	for i, ac := range vs.state.AcoesAtivas {
+	var a Lawsuit
+	for i, ac := range ts.state.ActivesLawsuits {
 		if ac.ID == id {
 			idx = i
 			a = ac
@@ -251,96 +247,96 @@ func (vs *VaraStore) ExtinguirSemMerito(id string) (Acao, error) {
 		}
 	}
 	if idx == -1 {
-		return Acao{}, fmt.Errorf("ação %q não encontrada na lista de ativas", id)
+		return Lawsuit{}, fmt.Errorf("lawsuit %q not found in the actives lawsuits list", id)
 	}
 
-	vs.state.AcoesAtivas = append(vs.state.AcoesAtivas[:idx], vs.state.AcoesAtivas[idx+1:]...)
-	vs.state.AcoesExtSemMerito = append(vs.state.AcoesExtSemMerito, a)
+	ts.state.ActivesLawsuits = append(ts.state.ActivesLawsuits[:idx], ts.state.ActivesLawsuits[idx+1:]...)
+	ts.state.LawsuitsDisWithoutMerit = append(ts.state.LawsuitsDisWithoutMerit, a)
 
-	if err := vs.saveLocked(); err != nil {
-		return Acao{}, err
+	if err := ts.saveLocked(); err != nil {
+		return Lawsuit{}, err
 	}
 	return a, nil
 }
 
-// Cópias para leitura
-func (vs *VaraStore) GetAtivas() []Acao {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	res := make([]Acao, len(vs.state.AcoesAtivas))
-	copy(res, vs.state.AcoesAtivas)
+// Copy for reading
+func (ts *TrialStore) GetActives() []Lawsuit {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	res := make([]Lawsuit, len(ts.state.ActivesLawsuits))
+	copy(res, ts.state.ActivesLawsuits)
 	return res
 }
 
-func (vs *VaraStore) GetExtComMerito() []Acao {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	res := make([]Acao, len(vs.state.AcoesExtComMerito))
-	copy(res, vs.state.AcoesExtComMerito)
+func (ts *TrialStore) GetDisWithMerit() []Lawsuit {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	res := make([]Lawsuit, len(ts.state.LawsuitsDisWithMerit))
+	copy(res, ts.state.LawsuitsDisWithMerit)
 	return res
 }
 
-func (vs *VaraStore) GetExtSemMerito() []Acao {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	res := make([]Acao, len(vs.state.AcoesExtSemMerito))
-	copy(res, vs.state.AcoesExtSemMerito)
+func (ts *TrialStore) GetDisWithoutMerit() []Lawsuit {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	res := make([]Lawsuit, len(ts.state.LawsuitsDisWithoutMerit))
+	copy(res, ts.state.LawsuitsDisWithoutMerit)
 	return res
 }
 
-func (vs *VaraStore) CountAtivas() int {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	return len(vs.state.AcoesAtivas)
+func (ts *TrialStore) CountActives() int {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return len(ts.state.ActivesLawsuits)
 }
 
-func (vs *VaraStore) GetVaraAddr() string {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	return vs.state.VaraAddr
+func (ts *TrialStore) GetTrialAddr() string {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.state.TrialAddr
 }
 
-func (vs *VaraStore) GetIDs() (int, int) {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	return vs.state.ComarcaID, vs.state.VaraID
+func (ts *TrialStore) GetIDs() (int, int) {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.state.DistrictID, ts.state.TrialID
 }
 
-func (vs *VaraStore) GetComarcaNome() string {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
-	return vs.state.ComarcaNome
+func (ts *TrialStore) GetDistrictName() string {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	return ts.state.DistrictName
 }
 
-// Atualiza IDs, nome da comarca e endereço da vara, salvando em disco (espelho)
-func (vs *VaraStore) UpdateInfo(comarcaID int, comarcaNome string, varaID int, varaAddr string) error {
-	vs.mu.Lock()
-	if comarcaID > 0 {
-		vs.state.ComarcaID = comarcaID
+// Update IDs, district's name and trial's address, saving in disc (mirror)
+func (ts *TrialStore) UpdateInfo(districtID int, districtName string, trialID int, trialAddr string) error {
+	ts.mu.Lock()
+	if districtID > 0 {
+		ts.state.DistrictID = districtID
 	}
-	if strings.TrimSpace(comarcaNome) != "" {
-		vs.state.ComarcaNome = strings.TrimSpace(comarcaNome)
+	if strings.TrimSpace(districtName) != "" {
+		ts.state.DistrictName = strings.TrimSpace(districtName)
 	}
-	if varaID > 0 {
-		vs.state.VaraID = varaID
+	if trialID > 0 {
+		ts.state.TrialID = trialID
 	}
-	if strings.TrimSpace(varaAddr) != "" {
-		vs.state.VaraAddr = strings.TrimSpace(varaAddr)
+	if strings.TrimSpace(trialAddr) != "" {
+		ts.state.TrialAddr = strings.TrimSpace(trialAddr)
 	}
-	if vs.state.NextSeq <= 0 {
-		vs.state.NextSeq = 1
+	if ts.state.NextSeq <= 0 {
+		ts.state.NextSeq = 1
 	}
-	err := vs.saveLocked()
-	vs.mu.Unlock()
+	err := ts.saveLocked()
+	ts.mu.Unlock()
 	return err
 }
 
-// Atualiza pedidos de uma ação existente (continência - reunião de pedidos)
-func (vs *VaraStore) AddPedidos(acaoID string, pedidosNovos []int) error {
-	vs.mu.Lock()
-	defer vs.mu.Unlock()
+// Update claims of one existent lawsuit (joinder - gathering of lawsuits) 
+func (ts *TrialStore) AddClaims(LawsuitID string, newClaims []int) error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 
-	// helper para set de pedidos
+	// helper for claims set 
 	addUnique := func(slice []int, val int) []int {
 		for _, x := range slice {
 			if x == val {
@@ -350,27 +346,27 @@ func (vs *VaraStore) AddPedidos(acaoID string, pedidosNovos []int) error {
 		return append(slice, val)
 	}
 
-	encontrada := false
-	for i := range vs.state.AcoesAtivas {
-		if vs.state.AcoesAtivas[i].ID == acaoID {
-			for _, p := range pedidosNovos {
-				vs.state.AcoesAtivas[i].Pedidos = addUnique(vs.state.AcoesAtivas[i].Pedidos, p)
+	found := false
+	for i := range ts.state.ActivesLawsuits {
+		if ts.state.ActivesLawsuits[i].ID == LawsuitID {
+			for _, p := range newClaims {
+				ts.state.ActivesLawsuits[i].Claims = addUnique(ts.state.ActivesLawsuits[i].Claims, p)
 			}
-			encontrada = true
+			found = true
 			break
 		}
 	}
-	if !encontrada {
-		return fmt.Errorf("ação %s não encontrada entre as ações ativas para merge de pedidos", acaoID)
+	if !found {
+		return fmt.Errorf("lawsuit %s not found between the actives lawsuits for claims' merge", LawsuitID)
 	}
 
-	return vs.saveLocked()
+	return ts.saveLocked()
 }
 
-// Adiciona ligação de conexão entre duas ações (bidirecional, se possível)
-func (vs *VaraStore) AddConexao(acaoID string, outraID string) error {
-	vs.mu.Lock()
-	defer vs.mu.Unlock()
+// Add connection link between two lawsuits (bidirectional, if possible)
+func (ts *TrialStore) AddConnection(LawsuitID string, otherID string) error {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
 
 	addUniqueStr := func(slice []string, val string) []string {
 		for _, x := range slice {
@@ -381,93 +377,93 @@ func (vs *VaraStore) AddConexao(acaoID string, outraID string) error {
 		return append(slice, val)
 	}
 
-	// encontra ambas ações ativas
+	// found both active lawsuits
 	var idx1, idx2 = -1, -1
-	for i := range vs.state.AcoesAtivas {
-		if vs.state.AcoesAtivas[i].ID == acaoID {
+	for i := range ts.state.ActivesLawsuits {
+		if ts.state.ActivesLawsuits[i].ID == LawsuitID {
 			idx1 = i
 		}
-		if vs.state.AcoesAtivas[i].ID == outraID {
+		if ts.state.ActivesLawsuits[i].ID == otherID {
 			idx2 = i
 		}
 	}
 	if idx1 == -1 {
-		return fmt.Errorf("ação %s não encontrada para conexão", acaoID)
+		return fmt.Errorf("lawsuit %s not found for connection", LawsuitID)
 	}
 	if idx2 == -1 {
-		// se a outra ainda não está aqui, conecta só uma ponta
-		vs.state.AcoesAtivas[idx1].Conexas = addUniqueStr(vs.state.AcoesAtivas[idx1].Conexas, outraID)
-		return vs.saveLocked()
+		// if the other is not here yet, connect only one end
+		ts.state.ActivesLawsuits[idx1].Connected = addUniqueStr(ts.state.ActivesLawsuits[idx1].Connected, otherID)
+		return ts.saveLocked()
 	}
 
-	vs.state.AcoesAtivas[idx1].Conexas = addUniqueStr(vs.state.AcoesAtivas[idx1].Conexas, outraID)
-	vs.state.AcoesAtivas[idx2].Conexas = addUniqueStr(vs.state.AcoesAtivas[idx2].Conexas, acaoID)
+	ts.state.ActivesLawsuits[idx1].Connected = addUniqueStr(ts.state.ActivesLawsuits[idx1].Connected, otherID)
+	ts.state.ActivesLawsuits[idx2].Connected = addUniqueStr(ts.state.ActivesLawsuits[idx2].Connected, LawsuitID)
 
-	return vs.saveLocked()
+	return ts.saveLocked()
 }
 
 
-// ---------- Busca em todas as listas (para o menu "Buscar ação") ----------
+// ---------- Search in all lists (for the "Search lawsuit" menu) ----------
 
-type ResultadoBusca struct {
-	Lista string
-	Acao  Acao
+type SearchResult struct {
+	List     string
+	Lawsuit  Lawsuit
 }
 
-// Pedido da comarca para a vara buscar ações por um critério simples.
-type VaraBuscarAcoesRequest struct {
-	Type  string `json:"type"`  // "acao_buscar"
-	Campo string `json:"campo"` // "id", "autor", "reu", "causa", "pedido"
-	Valor string `json:"valor"`
+// District request to the trial start searching lawsuits by simple criteria.
+type TrialSearchLawsuitsRequest struct {
+	Type  string `json:"type"`  // "search_lawsuit"
+	Field string `json:"field"` // "id", "plaintiff", "defendant", "cause", "claim"
+	Value string `json:"value"`
 }
 
-// Resultado individual de busca de ações retornado pela vara (achatado, sem campo "acao").
-type VaraBuscaResultado struct {
-	Lista      string `json:"lista"`       // "Ativa", "Extinta com mérito", "Extinta sem mérito"
-	ID         string `json:"id"`          // ID da ação (ex: "1.1.3")
-	Autor      string `json:"autor"`       // Nome do autor
-	Reu        string `json:"reu"`         // Nome do réu
-	CausaPedir int    `json:"causa_pedir"` // Código da causa de pedir
-	Pedidos    []int  `json:"pedidos"`     // Lista de pedidos
+// Individual search result for lawsuits returned by the trial (flattened, withou field "Lawsuit").
+type TrialSearchResult struct {
+	List        string `json:"list"`         // "Active", "Dismissed with merit", "Dismissed without merit"
+	ID          string `json:"id"`           // Lawsuit ID (ex: "1.1.3")
+	Plaintiff   string `json:"plaintiff"`    // Plaintiff's name
+	Defendant   string `json:"defendant"`    // Defendant's name
+	CauseAction int    `json:"cause_action"` // Cause of action code
+	Claims      []int  `json:"claims"`       // Claims' List 
 }
 
-// Resposta da vara ao pedido de busca de ações.
-type VaraBuscarAcoesResponse struct {
-	Success     bool                 `json:"success"`
-	Message     string               `json:"message"`
-	ComarcaID   int                  `json:"comarca_id,omitempty"`
-	ComarcaNome string               `json:"comarca_nome,omitempty"`
-	VaraID      int                  `json:"vara_id,omitempty"`
-	VaraAddr    string               `json:"vara_addr,omitempty"`
-	Resultados  []VaraBuscaResultado `json:"resultados,omitempty"`
+// Trial response for the request of lawsuits search
+type TrialSearchLawsuitsResponse struct {
+	Success      bool                `json:"success"`
+	Message      string              `json:"message"`
+	DistrictID   int                 `json:"district_id,omitempty"`
+	DistrictName string              `json:"district_name,omitempty"`
+	TrialID      int                 `json:"trial_id,omitempty"`
+	TrialAddr    string              `json:"trial_addr,omitempty"`
+	Results      []TrialSearchResult `json:"results,omitempty"`
 }
 
-func (vs *VaraStore) BuscarAcoes(campo, valor string) ([]ResultadoBusca, error) {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
+func (ts *TrialStore) SearchLawsuits(field, value string) ([]SearchResult, error) {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
-	resultados := []ResultadoBusca{}
+	results := []SearchResult{}
 
-	match := func(a Acao) bool {
-		switch campo {
+	match := func(a Lawsuit) bool {
+		switch field {
 		case "id":
-			return strings.EqualFold(a.ID, valor)
-		case "autor":
-			return strings.Contains(strings.ToLower(a.Autor), strings.ToLower(valor))
-		case "reu":
-			return strings.Contains(strings.ToLower(a.Reu), strings.ToLower(valor))
-		case "causa":
-			n, err := strconv.Atoi(valor)
+			return strings.EqualFold(a.ID, value)
+		case "plaintiff":
+			return strings.Contains(strings.ToLower(a.Plaintiff), strings.ToLower(value))
+		case "defendant":
+			return strings.Contains(strings.ToLower(a.Defendant), strings.ToLower(value))
+		case "cause":
+			n, err := strconv.Atoi(value)
 			if err != nil {
 				return false
 			}
-			return a.CausaPedir == n
-		case "pedido":
-			n, err := strconv.Atoi(valor)
+			return a.CauseAction == n
+		case "claim":
+			n, err := strconv.Atoi(value)
 			if err != nil {
 				return false
 			}
-			for _, p := range a.Pedidos {
+			for _, p := range a.Claims {
 				if p == n {
 					return true
 				}
@@ -478,27 +474,27 @@ func (vs *VaraStore) BuscarAcoes(campo, valor string) ([]ResultadoBusca, error) 
 		}
 	}
 
-	for _, a := range vs.state.AcoesAtivas {
+	for _, a := range ts.state.ActivesLawsuits {
 		if match(a) {
-			resultados = append(resultados, ResultadoBusca{Lista: "Ativa", Acao: a})
+			results = append(results, SearchResult{List: "Active", Lawsuit: a})
 		}
 	}
-	for _, a := range vs.state.AcoesExtComMerito {
+	for _, a := range ts.state.LawsuitsDisWithMerit {
 		if match(a) {
-			resultados = append(resultados, ResultadoBusca{Lista: "Extinta com mérito", Acao: a})
+			results = append(results, SearchResult{List: "Dismissed with merit", Lawsuit: a})
 		}
 	}
-	for _, a := range vs.state.AcoesExtSemMerito {
+	for _, a := range ts.state.LawsuitsDisWithoutMerit {
 		if match(a) {
-			resultados = append(resultados, ResultadoBusca{Lista: "Extinta sem mérito", Acao: a})
+			results = append(results, SearchResult{List: "Dismissed without merit", Lawsuit: a})
 		}
 	}
 
-	return resultados, nil
+	return results, nil
 }
 
 
-// ---------- Funções auxiliares de comparação de pedidos ----------
+// ---------- Aux functions for claims comparation ----------
 
 func sameIntSet(a, b []int) bool {
 	if len(a) != len(b) {
@@ -552,82 +548,82 @@ func hasOverlap(a, b []int) bool {
 }
 
 
-// ---------- Estruturas de protocolo COMARCA <-> VARA (ação) ----------
+// ---------- Structures of protocol DISTRICT <-> TRIAL (lawsuit) ----------
 
-// Descrição da ação no protocolo
+// Lawsuit description in the protocol
 type ActionQuery struct {
-	Autor   string `json:"autor"`
-	Reu     string `json:"reu"`
-	CausaID int    `json:"causa_id"`
-	Pedidos []int  `json:"pedidos"`
+	Plaintiff string `json:"plaintiff"`
+	Defendant string `json:"defendant"`
+	CauseID   int    `json:"cause_id"`
+	Claims    []int  `json:"claims"`
 }
 
-// Pedido da comarca para a vara fazer busca por ação
-type VaraActionQueryRequest struct {
-	Type  string      `json:"type"`  // "acao_query"
-	Stage string      `json:"stage"` // "coisa_julgada", "litispendencia", "pedido_reiterado", "continencia", "conexao"
-	Acao  ActionQuery `json:"acao"`
+// District request for the trial start a searching for lawsuit
+type TrialActionQueryRequest struct {
+	Type     string      `json:"type"`  // "lawsuit_query"
+	Stage    string      `json:"stage"` // "res_judicata", "lis_pendens", "repeated_request", "joinder", "connection"
+	Lawsuit  ActionQuery `json:"Lawsuit"`
 }
 
-// Resposta da vara sobre ação
-type VaraActionQueryResponse struct {
+// Trial response about lawsuit
+type TrialActionQueryResponse struct {
 	Success bool   `json:"success"`
 	Stage   string `json:"stage"`
-	Match   string `json:"match"` // "", "coisa_julgada", "litispendencia", "pedido_reiterado", "continencia_contida", "continencia_continente", "conexao"
+	Match   string `json:"match"` // "", "res_judicata", "lis_pendens", "repeated_request", "joinder_contained", "joinder_continent", "connection"
 	Message string `json:"message"`
 
-	AcaoID string `json:"acao_id,omitempty"`
+	LawsuitID string `json:"Lawsuit_id,omitempty"`
 
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	VaraAddr    string `json:"vara_addr,omitempty"`
+	DistrictID   int    `json:"district_id,omitempty"`
+	DistrictName string `json:"district_name,omitempty"`
+	TrialID      int    `json:"trial_id,omitempty"`
+	TrialAddr    string `json:"trial_addr,omitempty"`
 
-	PedidosExistentes []int    `json:"pedidos_existentes,omitempty"`
-	AcoesConexas      []string `json:"acoes_conexas,omitempty"`
+	ExistentClaims     []int    `json:"existent_claims,omitempty"`
+	ConnectedLawsuits  []string `json:"connected_lawsuits,omitempty"`
 }
 
-// Pedido da comarca para a vara criar ação
-type VaraCreateActionRequest struct {
-	Type        string      `json:"type"` // "acao_create"
-	Motivo      string      `json:"motivo"`
-	Acao        ActionQuery `json:"acao"`
-	Relacionada string      `json:"relacionada,omitempty"` // ID da ação relacionada
+// District request for the trial to create a lawsuit
+type TrialCreateActionRequest struct {
+	Type    string      `json:"type"` // "lawsuit_create"
+	Reason  string      `json:"reason"`
+	Lawsuit ActionQuery `json:"Lawsuit"`
+	Related string      `json:"related,omitempty"` // ID of related lawsuit
 }
 
-type VaraCreateActionResponse struct {
+type TrialCreateActionResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 
-	AcaoID      string `json:"acao_id,omitempty"`
-	ComarcaID   int    `json:"comarca_id,omitempty"`
-	ComarcaNome string `json:"comarca_nome,omitempty"`
-	VaraID      int    `json:"vara_id,omitempty"`
-	VaraAddr    string `json:"vara_addr,omitempty"`
+	LawsuitID    string `json:"Lawsuit_id,omitempty"`
+	DistrictID   int    `json:"district_id,omitempty"`
+	DistrictName string `json:"district_name,omitempty"`
+	TrialID      int    `json:"trial_id,omitempty"`
+	TrialAddr    string `json:"trial_addr,omitempty"`
 }
 
-// Pedido para merge de pedidos (continência)
-type VaraMergePedidosRequest struct {
-	Type         string `json:"type"` // "acao_merge_pedidos"
-	AcaoID       string `json:"acao_id"`
-	PedidosNovos []int  `json:"pedidos_novos"`
+// Request to claims merge (joinder)
+type TrialMergeClaimsRequest struct {
+	Type      string `json:"type"` // "lawsuit_merge_claims"
+	LawsuitID string `json:"Lawsuit_id"`
+	NewClaims []int  `json:"new_claims"`
 }
 
-type VaraMergePedidosResponse struct {
+type TrialMergeClaimsResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
 
 
-// ---------- Persistência do endereço da comarca ----------
+// ---------- District address persistence ----------
 
-const comarcaAddrFile = "comarca_addr.txt"
+const districtAddrFile = "district_addr.txt"
 
-func carregarEnderecoComarca(path string) string {
+func loadDistrictAddress(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("Erro ao ler arquivo de endereço da comarca (%s): %v", path, err)
+			log.Printf("Error while reading district address file (%s): %v", path, err)
 		}
 		return ""
 	}
@@ -635,72 +631,72 @@ func carregarEnderecoComarca(path string) string {
 	return addr
 }
 
-func salvarEnderecoComarca(path, addr string) {
+func saveDistrictAddress(path, addr string) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return
 	}
 	if err := os.WriteFile(path, []byte(addr+"\n"), 0644); err != nil {
-		log.Printf("Erro ao salvar endereço da comarca em %s: %v", path, err)
+		log.Printf("Error while saving the district address in %s: %v", path, err)
 	}
 }
 
 
-// ---------- Protocolo com a comarca (handshake inicial) ----------
+// ---------- Protocol with the district (initial handshake) ----------
 
-// Mensagem que a VARA envia para a COMARCA
-type ComarcaInfoRequest struct {
-	Type   string `json:"type"`    // "vara_info"
-	VaraID int    `json:"vara_id"` // qual vara (1, 2, 3, etc.)
+// Message sent by the TRIAL to the DISTRICT
+type DistrictInfoRequest struct {
+	Type    string `json:"type"`     // "trial_info"
+	TrialID int    `json:"trial_id"` // which trial (1, 2, 3, etc.)
 }
 
-// Resposta que a COMARCA envia para a VARA
-type ComarcaInfoResponse struct {
-	Success     bool   `json:"success"`
-	Message     string `json:"message"`
-	ComarcaID   int    `json:"comarca_id"`
-	ComarcaNome string `json:"comarca_nome"`
-	VaraID      int    `json:"vara_id"`
-	VaraAddr    string `json:"vara_addr"`
+// Response that the DISTRICT send to the TRIAL
+type DistrictInfoResponse struct {
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+	DistrictID   int    `json:"district_id"`
+	DistrictName string `json:"district_name"`
+	TrialID      int    `json:"trial_id"`
+	TrialAddr    string `json:"trial_addr"`
 }
 
-// Tenta obter (da comarca) ComarcaID, ComarcaNome, VaraID e VaraAddr.
-// Em caso de erro, só loga; não interrompe a inicialização.
-func obterInfoDaComarca(comarcaAddr string, varaID int, vs *VaraStore) {
-	if varaID <= 0 {
-		log.Printf("obterInfoDaComarca: VaraID inválido (%d); não é possível consultar comarca.", varaID)
+// Try to get (from district) DistricID, DistrictName, TrialID and TrialAddr.
+// If error, log only; do not stop the initialization.
+func getInfoFromDistrict(districtAddr string, trialID int, ts *TrialStore) {
+	if trialID <= 0 {
+		log.Printf("getInfoFromDistrict: Invalid trialID (%d);  it is not possible to verify the district.", trialID)
 		return
 	}
 
-	addr, err := net.ResolveUDPAddr("udp", comarcaAddr)
+	addr, err := net.ResolveUDPAddr("udp", districtAddr)
 	if err != nil {
-		log.Printf("Erro ao resolver endereço da comarca (%s): %v", comarcaAddr, err)
+		log.Printf("Error while resolving district address (%s): %v", districtAddr, err)
 		return
 	}
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		log.Printf("Erro ao conectar à comarca em %s: %v", comarcaAddr, err)
+		log.Printf("Error while connecting to the district in %s: %v", districtAddr, err)
 		return
 	}
 	defer conn.Close()
 
-	req := ComarcaInfoRequest{
-		Type:   "vara_info",
-		VaraID: varaID,
+	req := DistrictInfoRequest{
+		Type:   "trial_info",
+		TrialID: trialID,
 	}
 
-	dados, err := json.Marshal(req)
+	data, err := json.Marshal(req)
 	if err != nil {
-		log.Printf("Erro ao codificar JSON para comarca: %v", err)
+		log.Printf("Error while decoding JSON for district: %v", err)
 		return
 	}
 
-	log.Printf("[VARA->COMARCA] %s - enviando vara_info (VaraID=%d) para %s",
-		time.Now().Format(time.RFC3339), varaID, comarcaAddr)
+	log.Printf("[TRIAL->DISTRICT] %s - sending trial_info (TrialID=%d) to %s",
+		time.Now().Format(time.RFC3339), trialID, districtAddr)
 
-	if _, err := conn.Write(dados); err != nil {
-		log.Printf("Erro ao enviar requisição para comarca: %v", err)
+	if _, err := conn.Write(data); err != nil {
+		log.Printf("Error while sending request to district: %v", err)
 		return
 	}
 
@@ -708,449 +704,449 @@ func obterInfoDaComarca(comarcaAddr string, varaID int, vs *VaraStore) {
 	buf := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
-		log.Printf("Erro ao receber resposta da comarca: %v", err)
+		log.Printf("Error while receiving response from district: %v", err)
 		return
 	}
 
-	var resp ComarcaInfoResponse
+	var resp DistrictInfoResponse
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
-		log.Printf("Erro ao decodificar resposta da comarca: %v", err)
+		log.Printf("Error while decoding response from district: %v", err)
 		return
 	}
 
 	if !resp.Success {
-		log.Printf("Comarca respondeu erro no vara_info: %s", resp.Message)
+		log.Printf("District responded with error in the trial_info: %s", resp.Message)
 		return
 	}
 
-	log.Printf("[COMARCA->VARA] %s - vara_info OK: ComarcaID=%d, ComarcaNome=%q, VaraID=%d, VaraAddr=%q",
+	log.Printf("[DISTRICT->TRIAL] %s - trial_info OK: DistrictID=%d, DistrictName=%q, TrialID=%d, TrialAddr=%q",
 		time.Now().Format(time.RFC3339),
-		resp.ComarcaID, resp.ComarcaNome, resp.VaraID, resp.VaraAddr,
+		resp.DistrictID, resp.DistrictName, resp.TrialID, resp.TrialAddr,
 	)
 
-	if err := vs.UpdateInfo(resp.ComarcaID, resp.ComarcaNome, resp.VaraID, resp.VaraAddr); err != nil {
-		log.Printf("Erro ao atualizar espelho local de IDs da vara: %v", err)
+	if err := ts.UpdateInfo(resp.DistrictID, resp.DistrictName, resp.TrialID, resp.TrialAddr); err != nil {
+		log.Printf("Error while updating IDs' local mirror of trial: %v", err)
 	}
 }
 
 
-// ---------- Lógica de busca para as regras 1 a 5 na vara ----------
+// ---------- Search logic for rules 1 to 5 in the trial ----------
 
-func (vs *VaraStore) findIdenticaEm(lista string, q ActionQuery) (Acao, bool) {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
+func (ts *TrialStore) findIdenticalDwM(list string, q ActionQuery) (Lawsuit, bool) {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
-	match := func(a Acao) bool {
-		return strings.EqualFold(a.Autor, q.Autor) &&
-			strings.EqualFold(a.Reu, q.Reu) &&
-			a.CausaPedir == q.CausaID &&
-			sameIntSet(a.Pedidos, q.Pedidos)
+	match := func(a Lawsuit) bool {
+		return strings.EqualFold(a.Plaintiff, q.Plaintiff) &&
+			strings.EqualFold(a.Defendant, q.Defendant) &&
+			a.CauseAction == q.CauseID &&
+			sameIntSet(a.Claims, q.Claims)
 	}
 
-	switch lista {
-	case "ext_com":
-		for _, a := range vs.state.AcoesExtComMerito {
+	switch list {
+	case "dis_with":
+		for _, a := range ts.state.LawsuitsDisWithMerit {
 			if match(a) {
 				return a, true
 			}
 		}
-	case "ext_sem":
-		for _, a := range vs.state.AcoesExtSemMerito {
+	case "dis_without":
+		for _, a := range ts.state.LawsuitsDisWithoutMerit {
 			if match(a) {
 				return a, true
 			}
 		}
-	case "ativas":
-		for _, a := range vs.state.AcoesAtivas {
+	case "actives":
+		for _, a := range ts.state.ActivesLawsuits {
 			if match(a) {
 				return a, true
 			}
 		}
 	}
-	return Acao{}, false
+	return Lawsuit{}, false
 }
 
 
-// Continência: mesmas partes (autor, réu), mesma causa de pedir,
-// mas pedidos com relação de conjunto (contido/continente).
-// Retorna:
-//   - "continencia_contida": nova ação é CONTIDA na existente (não cria nova).
-//   - "continencia_continente": nova é CONTINENTE (precisa agregar pedidos à existente).
-func (vs *VaraStore) findContinencia(q ActionQuery) (string, Acao, bool) {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
+// Joinder (continence): same parts (plaintiff, defendant), same cause of action,
+// but claims with a set relationship (contained/continent).
+// Returns:
+//   - "joinder_contained": the new lawsuit is CONTAINED in the existent one (does not create a new lawsuit).
+//   - "joinder_continent": the new lawsuit is CONTINENT (it is necessay to merge the claims into existent lawsuit).
+func (ts *TrialStore) findJoinder(q ActionQuery) (string, Lawsuit, bool) {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
-	for _, a := range vs.state.AcoesAtivas {
-		if !strings.EqualFold(a.Autor, q.Autor) {
+	for _, a := range ts.state.ActivesLawsuits {
+		if !strings.EqualFold(a.Plaintiff, q.Plaintiff) {
 			continue
 		}
-		if !strings.EqualFold(a.Reu, q.Reu) {
+		if !strings.EqualFold(a.Defendant, q.Defendant) {
 			continue
 		}
-		if a.CausaPedir != q.CausaID {
-			continue
-		}
-
-		// igual -> já seria tratado nas regras anteriores
-		if sameIntSet(a.Pedidos, q.Pedidos) {
+		if a.CauseAction != q.CauseID {
 			continue
 		}
 
-		if isSubset(q.Pedidos, a.Pedidos) {
-			return "continencia_contida", a, true
+		// equal -> already treated in the previous rules
+		if sameIntSet(a.Claims, q.Claims) {
+			continue
 		}
-		if isSubset(a.Pedidos, q.Pedidos) {
-			return "continencia_continente", a, true
+
+		if isSubset(q.Claims, a.Claims) {
+			return "joinder_contained", a, true
+		}
+		if isSubset(a.Claims, q.Claims) {
+			return "joinder_continent", a, true
 		}
 	}
 
-	return "", Acao{}, false
+	return "", Lawsuit{}, false
 }
 
 
-// Conexão: mesma causa de pedir e/ou pedidos em comum (ações ATIVAS),
-// MAS **NÃO** pode ser caso de mesmas partes + mesma causa de pedir,
-// porque esses casos são reservados para CONTINÊNCIA.
-func (vs *VaraStore) findConexao(q ActionQuery) (Acao, bool) {
-	vs.mu.RLock()
-	defer vs.mu.RUnlock()
+// Connection: same cause of action and/or common claims (ACTIVES lawsuits),
+// BUT **CANNOT** be the case of same parts + cause of action,
+// because these cases are reserved as JOINDER
+func (ts *TrialStore) findConnection(q ActionQuery) (Lawsuit, bool) {
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
 
-	for _, a := range vs.state.AcoesAtivas {
-		// 1) Se tiver MESMO autor, MESMO réu e MESMA causa,
-		//    esse caso deve ser avaliado na regra de CONTINÊNCIA,
-		//    não na conexão. Pulamos aqui.
-		if strings.EqualFold(a.Autor, q.Autor) &&
-			strings.EqualFold(a.Reu, q.Reu) &&
-			a.CausaPedir == q.CausaID {
+	for _, a := range ts.state.ActivesLawsuits {
+		// 1) If have SAME plaintiff, SAME defendant and SAME cause,
+		//    this case must be treated in the JOINDER rule,
+		//    not in the connection. Jum here.
+		if strings.EqualFold(a.Plaintiff, q.Plaintiff) &&
+			strings.EqualFold(a.Defendant, q.Defendant) &&
+			a.CauseAction == q.CauseID {
 			continue
 		}
 
-		// 2) Regra de conexão propriamente dita:
-		mesmaCausa := (a.CausaPedir == q.CausaID)
-		pedidosComuns := hasOverlap(a.Pedidos, q.Pedidos)
+		// 2) Rule for connection properly speaking:
+		sameCause := (a.CauseAction == q.CauseID)
+		commonClaims := hasOverlap(a.Claims, q.Claims)
 
-		if mesmaCausa || pedidosComuns {
+		if sameCause || commonClaims {
 			return a, true
 		}
 	}
-	return Acao{}, false
+	return Lawsuit{}, false
 }
 
 
-// ---------- Handlers UDP: acao_query / acao_create / acao_merge_pedidos ----------
+// ---------- Handlers UDP: lawsuit_query / lawsuit_create / lawsuit_merge_claims ----------
 
-func handleAcaoQuery(conn net.PacketConn, addr net.Addr, data []byte, vs *VaraStore) {
-	var req VaraActionQueryRequest
+func handleLawsuitQuery(conn net.PacketConn, addr net.Addr, data []byte, ts *TrialStore) {
+	var req TrialActionQueryRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("Erro ao decodificar VaraActionQueryRequest de %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialActionQueryRequest from %s: %v", addr.String(), err)
 		return
 	}
 
-	comarcaID, varaID := vs.GetIDs()
-	comarcaNome := vs.GetComarcaNome()
-	varaAddr := vs.GetVaraAddr()
+	districtID, trialID := ts.GetIDs()
+	districtName := ts.GetDistrictName()
+	trialAddr := ts.GetTrialAddr()
 
-	resp := VaraActionQueryResponse{
+	resp := TrialActionQueryResponse{
 		Success:     true,
 		Stage:       req.Stage,
-		Match:       "nenhuma",
-		Message:     "nenhuma ação correspondente encontrada nesta vara",
-		ComarcaID:   comarcaID,
-		ComarcaNome: comarcaNome,
-		VaraID:      varaID,
-		VaraAddr:    varaAddr,
+		Match:       "none",
+		Message:     "no corresponding lawsuit found in this trial",
+		DistrictID:   districtID,
+		DistrictName: districtName,
+		TrialID:      trialID,
+		TrialAddr:    trialAddr,
 	}
 
 	switch req.Stage {
-	case "coisa_julgada":
-		if a, ok := vs.findIdenticaEm("ext_com", req.Acao); ok {
-			resp.Match = "coisa_julgada"
-			resp.Message = "ação idêntica encontrada em extintas com resolução de mérito (coisa julgada)."
-			resp.AcaoID = a.ID
+	case "res_judicata":
+		if a, ok := ts.findIdenticalDwM("dis_with", req.Lawsuit); ok {
+			resp.Match = "res_judicata"
+			resp.Message = "identical lawsuit found in dismissed whith prejudice (merit judgment -> res judicata)."
+			resp.LawsuitID = a.ID
 		}
 
-	case "litispendencia":
-		if a, ok := vs.findIdenticaEm("ativas", req.Acao); ok {
-			resp.Match = "litispendencia"
-			resp.Message = "ação idêntica encontrada em ações ativas (litispendência)."
-			resp.AcaoID = a.ID
+	case "lis_pendens":
+		if a, ok := ts.findIdenticalDwM("actives", req.Lawsuit); ok {
+			resp.Match = "lis_pendens"
+			resp.Message = "identical lawsuit found in actives lawsuits (lis pendens)."
+			resp.LawsuitID = a.ID
 		}
 
-	case "pedido_reiterado":
-		if a, ok := vs.findIdenticaEm("ext_sem", req.Acao); ok {
-			resp.Match = "pedido_reiterado"
-			resp.Message = "ação idêntica encontrada em extintas sem resolução de mérito (pedido reiterado)."
-			resp.AcaoID = a.ID
+	case "repeated_request":
+		if a, ok := ts.findIdenticalDwM("dis_without", req.Lawsuit); ok {
+			resp.Match = "repeated_request"
+			resp.Message = "identical lawsuit found in dismissed without prejudice (no merit judgment -> repeated request)."
+			resp.LawsuitID = a.ID
 		}
 
-	case "continencia":
-		matchType, a, ok := vs.findContinencia(req.Acao)
+	case "joinder":
+		matchType, a, ok := ts.findJoinder(req.Lawsuit)
 		if ok {
 			resp.Match = matchType
 			switch matchType {
-			case "continencia_contida":
-				resp.Message = "nova ação é CONTIDA em ação já existente (pedido menor)."
-			case "continencia_continente":
-				resp.Message = "nova ação é CONTINENTE em relação à ação existente (pedido maior)."
+			case "joinder_contained":
+				resp.Message = "the new lawsuit is CONTAINED in the already existent lawsuit (smaller claim)."
+			case "joinder_continent":
+				resp.Message = "the new lawsuit is CONTINENT in relation with already existent lawsuit (bigger claim)."
 			}
-			resp.AcaoID = a.ID
-			resp.PedidosExistentes = append(resp.PedidosExistentes, a.Pedidos...)
+			resp.LawsuitID = a.ID
+			resp.ExistentClaims = append(resp.ExistentClaims, a.Claims...)
 		}
 
-	case "conexao":
-		if a, ok := vs.findConexao(req.Acao); ok {
-			resp.Match = "conexao"
-			resp.Message = "ação conexa encontrada (mesma causa de pedir e/ou pedido em comum)."
-			resp.AcaoID = a.ID
-			if len(a.Conexas) > 0 {
-				resp.AcoesConexas = append(resp.AcoesConexas, a.Conexas...)
+	case "connection":
+		if a, ok := ts.findConnection(req.Lawsuit); ok {
+			resp.Match = "connection"
+			resp.Message = "found a connected lawsuit (same cause of action and/or common claims)."
+			resp.LawsuitID = a.ID
+			if len(a.Connected) > 0 {
+				resp.ConnectedLawsuits = append(resp.ConnectedLawsuits, a.Connected...)
 			}
 		}
 
 	default:
 		resp.Success = false
-		resp.Message = "stage desconhecido na acao_query"
+		resp.Message = "unknown stage in the lawsuit_query"
 	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Erro ao codificar VaraActionQueryResponse para %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialActionQueryResponse from %s: %v", addr.String(), err)
 		return
 	}
 	if _, err := conn.WriteTo(b, addr); err != nil {
-		log.Printf("Erro ao enviar resposta acao_query para %s: %v", addr.String(), err)
+		log.Printf("Error while sending the response lawsuit_query to %s: %v", addr.String(), err)
 		return
 	}
 
-	log.Printf("[VARA] acao_query stage=%s match=%s para %s (acao_id=%s)",
-		resp.Stage, resp.Match, addr.String(), resp.AcaoID)
+	log.Printf("[TRIAL] lawsuit_query stage=%s match=%s to %s (Lawsuit_id=%s)",
+		resp.Stage, resp.Match, addr.String(), resp.LawsuitID)
 }
 
-func handleAcaoCreate(conn net.PacketConn, addr net.Addr, data []byte, vs *VaraStore) {
-	var req VaraCreateActionRequest
+func handleLawsuitCreate(conn net.PacketConn, addr net.Addr, data []byte, ts *TrialStore) {
+	var req TrialCreateActionRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("Erro ao decodificar VaraCreateActionRequest de %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialCreateActionRequest from %s: %v", addr.String(), err)
 		return
 	}
 
-	comarcaID, varaID := vs.GetIDs()
-	comarcaNome := vs.GetComarcaNome()
-	varaAddr := vs.GetVaraAddr()
+	districtID, trialID := ts.GetIDs()
+	districtName := ts.GetDistrictName()
+	trialAddr := ts.GetTrialAddr()
 
-	resp := VaraCreateActionResponse{
+	resp := TrialCreateActionResponse{
 		Success:     false,
 		Message:     "",
-		ComarcaID:   comarcaID,
-		ComarcaNome: comarcaNome,
-		VaraID:      varaID,
-		VaraAddr:    varaAddr,
+		DistrictID:   districtID,
+		DistrictName: districtName,
+		TrialID:      trialID,
+		TrialAddr:    trialAddr,
 	}
 
-	if req.Acao.Autor == "" || req.Acao.Reu == "" || req.Acao.CausaID == 0 || len(req.Acao.Pedidos) == 0 {
-		resp.Message = "dados insuficientes da ação na acao_create"
+	if req.Lawsuit.Plaintiff == "" || req.Lawsuit.Defendant == "" || req.Lawsuit.CauseID == 0 || len(req.Lawsuit.Claims) == 0 {
+		resp.Message = "iInsufficient data for the lawsuit in the lawsuit_create"
 	} else {
-		nova, err := vs.CriarAcao(
-			req.Acao.Autor,
-			req.Acao.Reu,
-			req.Acao.CausaID,
-			req.Acao.Pedidos,
+		new_lawsuit, err := ts.CreateLawsuit(
+			req.Lawsuit.Plaintiff,
+			req.Lawsuit.Defendant,
+			req.Lawsuit.CauseID,
+			req.Lawsuit.Claims,
 			nil,
 		)
 		if err != nil {
-			resp.Message = fmt.Sprintf("erro ao criar ação: %v", err)
+			resp.Message = fmt.Sprintf("error while creating lawsuit: %v", err)
 		} else {
 			resp.Success = true
-			resp.AcaoID = nova.ID
-			switch req.Motivo {
-			case "livre":
-				resp.Message = "ação criada por distribuição livre"
-			case "pedido_reiterado":
-				resp.Message = fmt.Sprintf("ação criada como PEDIDO REITERADO (relacionada à ação %s)", req.Relacionada)
-			case "conexao":
-				resp.Message = fmt.Sprintf("ação criada como CONEXA à ação %s", req.Relacionada)
-				if req.Relacionada != "" {
-					if err := vs.AddConexao(nova.ID, req.Relacionada); err != nil {
-						log.Printf("Erro ao registrar conexão entre ações (%s e %s): %v", nova.ID, req.Relacionada, err)
+			resp.LawsuitID = new_lawsuit.ID
+			switch req.Reason {
+			case "free":
+				resp.Message = "lawsuit created by free distribution"
+			case "repeated_request":
+				resp.Message = fmt.Sprintf("lawsuit created as REPEATED REQUEST (related to the lawsuit %s)", req.Related)
+			case "connection":
+				resp.Message = fmt.Sprintf("lawsuit created as CONNECTED to the lawsuit %s", req.Related)
+				if req.Related != "" {
+					if err := ts.AddConnection(new_lawsuit.ID, req.Related); err != nil {
+						log.Printf("Error while registering connection between lawsuits (%s and %s): %v", new_lawsuit.ID, req.Related, err)
 					}
 				}
 			default:
-				resp.Message = "ação criada"
+				resp.Message = "lawsuit created"
 			}
 		}
 	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Erro ao codificar VaraCreateActionResponse para %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialCreateActionResponse for %s: %v", addr.String(), err)
 		return
 	}
 	if _, err := conn.WriteTo(b, addr); err != nil {
-		log.Printf("Erro ao enviar resposta acao_create para %s: %v", addr.String(), err)
+		log.Printf("Error while sending response lawsuit_create to %s: %v", addr.String(), err)
 		return
 	}
 
-	log.Printf("[VARA] acao_create motivo=%s success=%v acao_id=%s para %s",
-		req.Motivo, resp.Success, resp.AcaoID, addr.String())
+	log.Printf("[TRIAL] lawsuit_create reason=%s success=%v Lawsuit_id=%s to %s",
+		req.Reason, resp.Success, resp.LawsuitID, addr.String())
 }
 
-func handleAcaoMergePedidos(conn net.PacketConn, addr net.Addr, data []byte, vs *VaraStore) {
-	var req VaraMergePedidosRequest
+func handleLawsuitMergeClaims(conn net.PacketConn, addr net.Addr, data []byte, ts *TrialStore) {
+	var req TrialMergeClaimsRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("Erro ao decodificar VaraMergePedidosRequest de %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialMergeClaimsRequest from %s: %v", addr.String(), err)
 		return
 	}
 
-	resp := VaraMergePedidosResponse{
+	resp := TrialMergeClaimsResponse{
 		Success: false,
 		Message: "",
 	}
 
-	if req.AcaoID == "" || len(req.PedidosNovos) == 0 {
-		resp.Message = "acao_id ou pedidos_novos inválidos na acao_merge_pedidos"
+	if req.LawsuitID == "" || len(req.NewClaims) == 0 {
+		resp.Message = "Invalid Lawsuit_id or new_claims in the lawsuit_merge_claims"
 	} else {
-		if err := vs.AddPedidos(req.AcaoID, req.PedidosNovos); err != nil {
-			resp.Message = fmt.Sprintf("erro ao agregar pedidos à ação %s: %v", req.AcaoID, err)
+		if err := ts.AddClaims(req.LawsuitID, req.NewClaims); err != nil {
+			resp.Message = fmt.Sprintf("error while merging claims to the lawsuit %s: %v", req.LawsuitID, err)
 		} else {
 			resp.Success = true
-			resp.Message = fmt.Sprintf("pedidos agregados com sucesso à ação %s", req.AcaoID)
+			resp.Message = fmt.Sprintf("claims were merged with success to the lawsuit %s", req.LawsuitID)
 		}
 	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Erro ao codificar VaraMergePedidosResponse para %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialMergeClaimsResponse to %s: %v", addr.String(), err)
 		return
 	}
 	if _, err := conn.WriteTo(b, addr); err != nil {
-		log.Printf("Erro ao enviar resposta acao_merge_pedidos para %s: %v", addr.String(), err)
+		log.Printf("Error while sending response lawsuit_merge_claims to %s: %v", addr.String(), err)
 		return
 	}
 
-	log.Printf("[VARA] acao_merge_pedidos acao_id=%s success=%v para %s",
-		req.AcaoID, resp.Success, addr.String())
+	log.Printf("[TRIAL] lawsuit_merge_claims Lawsuit_id=%s success=%v to %s",
+		req.LawsuitID, resp.Success, addr.String())
 }
 
-// Trata pedidos de acao_buscar vindos da comarca.
-func handleAcaoBuscar(conn net.PacketConn, addr net.Addr, data []byte, vs *VaraStore) {
-	var req VaraBuscarAcoesRequest
+// Treats claims of search_Lasuit from district.
+func handleSearchLawsuit(conn net.PacketConn, addr net.Addr, data []byte, ts *TrialStore) {
+	var req TrialSearchLawsuitsRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("Erro ao decodificar VaraBuscarAcoesRequest de %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialSearchLawsuitsRequest from %s: %v", addr.String(), err)
 		return
 	}
 
-	comarcaID, varaID := vs.GetIDs()
-	comarcaNome := vs.GetComarcaNome()
-	varaAddr := vs.GetVaraAddr()
+	districtID, trialID := ts.GetIDs()
+	districtName := ts.GetDistrictName()
+	trialAddr := ts.GetTrialAddr()
 
-	resp := VaraBuscarAcoesResponse{
+	resp := TrialSearchLawsuitsResponse{
 		Success:     true,
 		Message:     "",
-		ComarcaID:   comarcaID,
-		ComarcaNome: comarcaNome,
-		VaraID:      varaID,
-		VaraAddr:    varaAddr,
-		Resultados:  []VaraBuscaResultado{},
+		DistrictID:   districtID,
+		DistrictName: districtName,
+		TrialID:      trialID,
+		TrialAddr:    trialAddr,
+		Results:  []TrialSearchResult{},
 	}
 
-	resultados, err := vs.BuscarAcoes(req.Campo, req.Valor)
+	results, err := ts.SearchLawsuits(req.Field, req.Value)
 	if err != nil {
 		resp.Success = false
-		resp.Message = fmt.Sprintf("erro na busca de ações: %v", err)
+		resp.Message = fmt.Sprintf("error while searching for lawsuits: %v", err)
 	} else {
-		resp.Message = fmt.Sprintf("%d ações encontradas", len(resultados))
+		resp.Message = fmt.Sprintf("%d lawsuits found", len(results))
 
-		for _, r := range resultados {
-			a := r.Acao
-			resp.Resultados = append(resp.Resultados, VaraBuscaResultado{
-				Lista:      r.Lista,
-				ID:         a.ID,
-				Autor:      a.Autor,
-				Reu:        a.Reu,
-				CausaPedir: a.CausaPedir,
-				Pedidos:    append([]int(nil), a.Pedidos...),
+		for _, r := range results {
+			a := r.Lawsuit
+			resp.Results = append(resp.Results, TrialSearchResult{
+				List:        r.List,
+				ID:          a.ID,
+				Plaintiff:   a.Plaintiff,
+				Defendant:   a.Defendant,
+				CauseAction: a.CauseAction,
+				Claims:      append([]int(nil), a.Claims...),
 			})
 		}
 	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Erro ao codificar VaraBuscarAcoesResponse para %s: %v", addr.String(), err)
+		log.Printf("Error while decoding TrialSearchLawsuitsResponse to %s: %v", addr.String(), err)
 		return
 	}
 	if _, err := conn.WriteTo(b, addr); err != nil {
-		log.Printf("Erro ao enviar resposta acao_buscar para %s: %v", addr.String(), err)
+		log.Printf("Error while sending response search_lawsuit to %s: %v", addr.String(), err)
 		return
 	}
 
-	log.Printf("[VARA] acao_buscar campo=%s valor=%q resultados=%d para %s",
-		req.Campo, req.Valor, len(resp.Resultados), addr.String())
+	log.Printf("[TRIAL] search_lawsuit field=%s value=%q results=%d to %s",
+		req.Field, req.Value, len(resp.Results), addr.String())
 }
 
-// Handler de carga_info (consulta de carga de trabalho pela comarca)
-type CargaInfoRequest struct {
-	Type string `json:"type"` // "carga_info"
+// Handler to workload_info (workload verification by the district)
+type WorkloadInfoRequest struct {
+	Type string `json:"type"` // "workload_info"
 }
 
-type CargaInfoResponse struct {
+type WorkloadInfoResponse struct {
 	Success         bool   `json:"success"`
 	Message         string `json:"message"`
-	ComarcaID       int    `json:"comarca_id"`
-	ComarcaNome     string `json:"comarca_nome"`
-	VaraID          int    `json:"vara_id"`
-	VaraAddr        string `json:"vara_addr"`
-	CargaAtiva      int    `json:"carga_ativa"`
+	DistrictID      int    `json:"district_id"`
+	DistrictName    string `json:"district_name"`
+	TrialID         int    `json:"trial_id"`
+	TrialAddr       string `json:"trial_addr"`
+	ActiveWorkload  int    `json:"active_workload"`
 }
 
-func handleCargaInfo(conn net.PacketConn, addr net.Addr, vs *VaraStore) {
-	comarcaID, varaID := vs.GetIDs()
-	comarcaNome := vs.GetComarcaNome()
-	varaAddr := vs.GetVaraAddr()
-	carga := vs.CountAtivas()
+func handleWorkloadInfo(conn net.PacketConn, addr net.Addr, ts *TrialStore) {
+	districtID, trialID := ts.GetIDs()
+	districtName := ts.GetDistrictName()
+	trialAddr := ts.GetTrialAddr()
+	workload := ts.CountActives()
 
-	resp := CargaInfoResponse{
+	resp := WorkloadInfoResponse{
 		Success:         true,
-		Message:         "Carga de trabalho da vara retornada com sucesso.",
-		ComarcaID:       comarcaID,
-		ComarcaNome:     comarcaNome,
-		VaraID:          varaID,
-		VaraAddr:        varaAddr,
-		CargaAtiva:      carga,
+		Message:         "Trial's workload successfully returned.",
+		DistrictID:      districtID,
+		DistrictName:    districtName,
+		TrialID:         trialID,
+		TrialAddr:       trialAddr,
+		ActiveWorkload:  workload,
 	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Erro ao codificar CargaInfoResponse para %s: %v", addr.String(), err)
+		log.Printf("Error while decoding WorkloadInfoResponse for %s: %v", addr.String(), err)
 		return
 	}
 	if _, err := conn.WriteTo(b, addr); err != nil {
-		log.Printf("Erro ao enviar resposta carga_info para %s: %v", addr.String(), err)
+		log.Printf("Error while sending response workload_info to %s: %v", addr.String(), err)
 		return
 	}
 
-	log.Printf("[VARA] carga_info enviado para %s (carga=%d)", addr.String(), carga)
+	log.Printf("[TRIAL] workload_info sent to %s (workload=%d)", addr.String(), workload)
 }
 
 
-// ---------- Protocolo UDP genérico (fallback) ----------
+// ---------- Generic UDP protocol (fallback) ----------
 
 type GenericResponse struct {
 	Success bool        `json:"success"`
 	Message string      `json:"message"`
-	Dados   interface{} `json:"dados,omitempty"`
+	Dados   interface{} `json:"data,omitempty"`
 }
 
-func handlePacket(conn net.PacketConn, addr net.Addr, data []byte, vs *VaraStore) {
-	log.Printf("[REQ] %s - pacote recebido de %s (%d bytes)",
+func handlePacket(conn net.PacketConn, addr net.Addr, data []byte, ts *TrialStore) {
+	log.Printf("[REQ] %s - package received from %s (%d bytes)",
 		time.Now().Format(time.RFC3339), addr.String(), len(data))
 
 	var base struct {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(data, &base); err != nil {
-		log.Printf("Erro ao decodificar tipo de mensagem de %s: %v", addr.String(), err)
+		log.Printf("Error while decoding message type from %s: %v", addr.String(), err)
 		resp := GenericResponse{
 			Success: false,
-			Message: "erro ao decodificar mensagem da vara",
+			Message: "error while decoding trial's message",
 		}
 		b, _ := json.Marshal(resp)
 		_, _ = conn.WriteTo(b, addr)
@@ -1158,39 +1154,40 @@ func handlePacket(conn net.PacketConn, addr net.Addr, data []byte, vs *VaraStore
 	}
 
 	switch base.Type {
-	case "acao_query":
-		handleAcaoQuery(conn, addr, data, vs)
-	case "acao_create":
-		handleAcaoCreate(conn, addr, data, vs)
-	case "acao_merge_pedidos":
-		handleAcaoMergePedidos(conn, addr, data, vs)
-	case "acao_buscar":
-		handleAcaoBuscar(conn, addr, data, vs)
-	case "carga_info":
-		handleCargaInfo(conn, addr, vs)
+	case "lawsuit_query":
+		handleLawsuitQuery(conn, addr, data, ts)
+	case "lawsuit_create":
+		handleLawsuitCreate(conn, addr, data, ts)
+	case "lawsuit_merge_claims":
+		handleLawsuitMergeClaims(conn, addr, data, ts)
+	case "search_lawsuit":
+		handleSearchLawsuit(conn, addr, data, ts)
+	case "workload_info":
+		handleWorkloadInfo(conn, addr, ts)
 	default:
 		resp := GenericResponse{
 			Success: true,
-			Message: "Vara recebeu mensagem, mas o tipo não é reconhecido para lógica de ações.",
+			Message: "Trial received message, but the type is not recognized by the lawsuits' logic.",
 		}
 		b, err := json.Marshal(resp)
 		if err != nil {
-			log.Printf("Erro ao codificar resposta genérica: %v", err)
+			log.Printf("Error while decoding generic response: %v", err)
 			return
 		}
 		if _, err := conn.WriteTo(b, addr); err != nil {
-			log.Printf("Erro ao enviar resposta genérica UDP: %v", err)
+			log.Printf("Error while sending UDP generic response: %v", err)
 			return
 		}
-		log.Printf("[RESP] %s - resposta genérica enviada para %s", time.Now().Format(time.RFC3339), addr.String())
+		log.Printf("[RESP] %s - generic response sent to %s", time.Now().Format(time.RFC3339), addr.String())
 	}
 }
 
-// ---------- Utilitário: limpar tela ----------
+// ---------- Clear screen ----------
+
 func clearScreen() {
 	    switch runtime.GOOS {
         case "windows":
-                // Para cmd / PowerShell
+                // For cmd / PowerShell
                 cmd := exec.Command("cmd", "/c", "cls")
                 cmd.Stdout = os.Stdout
                 _ = cmd.Run()
@@ -1199,50 +1196,50 @@ func clearScreen() {
                 cmd := exec.Command("clear")
                 cmd.Stdout = os.Stdout
                 if err := cmd.Run(); err != nil {
-                        // Se der erro, cai pro escape ANSI
+                        // If error, goes to ANSI escape
                         fmt.Print("\033[2J\033[H")
                 }
         }
 }
 
 
-// ---------- Menu interativo ----------
+// ---------- Interactive Menu ----------
 
-func iniciarMenu(vs *VaraStore, sair chan bool) {
+func startMenu(ts *TrialStore, quit chan bool) {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		carga := vs.CountAtivas()
-		comarcaID, varaID := vs.GetIDs()
-		comarcaNome := vs.GetComarcaNome()
+		workload := ts.CountActives()
+		districtID, trialID := ts.GetIDs()
+		districtName := ts.GetDistrictName()
 
-		// Cabeçalho com "nª VARA CÍVEL"
-		titulo := "VARA CÍVEL"
-		if varaID > 0 {
-			titulo = fmt.Sprintf("%dª VARA CÍVEL", varaID)
+		// Header with "CIVEL TRIAL number"
+		title := "CIVEL TRIAL"
+		if trialID > 0 {
+			title = fmt.Sprintf("CIVEL TRIAL %d", trialID)
 		}
 
 		fmt.Println()
-		fmt.Printf("========== %s ==========\n", titulo)
-		if comarcaNome != "" && comarcaID > 0 {
-			fmt.Printf("(Comarca: %s - ID: %d)\n", comarcaNome, comarcaID)
-		} else if comarcaNome != "" {
-			fmt.Printf("(Comarca: %s)\n", comarcaNome)
-		} else if comarcaID > 0 {
-			fmt.Printf("(Comarca ID: %d)\n", comarcaID)
+		fmt.Printf("========== %s ==========\n", title)
+		if districtName != "" && districtID > 0 {
+			fmt.Printf("(District: %s - ID: %d)\n", districtName, districtID)
+		} else if districtName != "" {
+			fmt.Printf("(District: %s)\n", districtName)
+		} else if districtID > 0 {
+			fmt.Printf("(District ID: %d)\n", districtID)
 		}
-		fmt.Printf("Carga de trabalho (ações ativas): %d\n", carga)
-		fmt.Println("1 (L) - Listar ações (ativas, extintas ou reunidas)")
-		fmt.Println("2 (F) - Finalizar ação")
-		fmt.Println("3 (B) - Buscar ações")
-		fmt.Println("4 (S) - Sair")
-		fmt.Println("5 (R) - Refresh (limpar tela)")
-		fmt.Print("Sua opção> ")
+		fmt.Printf("Workload (actives lawsuits): %d\n", workload)
+		fmt.Println("1 (L) - List lawsuits (actives, dismissed or gathered)")
+		fmt.Println("2 (F) - Finish lawsuit")
+		fmt.Println("3 (S) - Search lawsuit")
+		fmt.Println("4 (Q) - Quit")
+		fmt.Println("5 (R) - Refresh (clear screen)")
+		fmt.Print("Your option> ")
 
-		linha, _ := reader.ReadString('\n')
-		opc := strings.TrimSpace(linha)
+		line, _ := reader.ReadString('\n')
+		opt := strings.TrimSpace(line)
 
-		switch opc {
+		switch opt {
 
 		case "5","r", "R":
 			clearScreen()
@@ -1251,190 +1248,191 @@ func iniciarMenu(vs *VaraStore, sair chan bool) {
 		case "1", "l", "L":
 			for {
 				clearScreen()
-				fmt.Println("\n--- LISTAR AÇÕES ---")
-				fmt.Println("1 (A) - Listar ações ativas")
-				fmt.Println("2 (C) - Listar ações extintas COM resolução de mérito")
-				fmt.Println("3 (S) - Listar ações extintas SEM resolução de mérito")
-				fmt.Println("4 (R) - Listar ações reunidas (conexas)")
-				fmt.Println("5 (V) - Voltar ao menu principal")
-				fmt.Print("Sua opção> ")
+				fmt.Println("\n--- LIST LAWSUITS ---")
+				fmt.Println("1 (A) - List active lawsuits")
+				fmt.Println("2 (W) - List lawsuits dismissed WITH merit judgment")
+				fmt.Println("3 (O) - List lawsuit dismissed WITHOUT merit judgment")
+				fmt.Println("4 (G) - List gathered lawsuits (connected)")
+				fmt.Println("5 (R) - Return to main menu")
+				fmt.Print("Your option> ")
 
-				subLinha, _ := reader.ReadString('\n')
-				subOpc := strings.TrimSpace(subLinha)
+				subLine, _ := reader.ReadString('\n')
+				SubOpt := strings.TrimSpace(subLine)
 
-				if subOpc == "5" || subOpc == "v" || subOpc == "V" {
+				if SubOpt == "5" || SubOpt == "r" || SubOpt == "R" {
 					break
 				}
 
-				switch subOpc {
+				switch SubOpt {
 				case "1", "a", "A":
-					ativas := vs.GetAtivas()
-					if len(ativas) == 0 {
-						fmt.Println("(Nenhuma ação ativa)")
+					actives := ts.GetActives()
+					if len(actives) == 0 {
+						fmt.Println("(No active lawsuits)")
 					} else {
-						fmt.Println("\n--- AÇÕES ATIVAS ---")
-						for _, a := range ativas {
-							fmt.Printf("ID: %s | Autor: %s | Réu: %s | Causa: %d | Pedidos: %v\n",
-								a.ID, a.Autor, a.Reu, a.CausaPedir, a.Pedidos)
+						fmt.Println("\n--- ACTIVE LAWSUITS ---")
+						for _, a := range actives {
+							fmt.Printf("ID: %s | Plaintiff: %s | Defendant: %s | Cause: %d | Claims: %v\n",
+								a.ID, a.Plaintiff, a.Defendant, a.CauseAction, a.Claims)
 						}
 					}
-				case "2", "c", "C":
-					ext := vs.GetExtComMerito()
+				case "2", "w", "W":
+					ext := ts.GetDisWithMerit()
 					if len(ext) == 0 {
-						fmt.Println("(Nenhuma ação extinta com resolução de mérito)")
+						fmt.Println("(No lawsuits dismissed with merit judgment)")
 					} else {
-						fmt.Println("\n--- AÇÕES EXTINTAS COM RESOLUÇÃO DE MÉRITO ---")
+						fmt.Println("\n--- LAWSUITS DISMISSED WITH MERIT JUDGMENT ---")
 						for _, a := range ext {
-							fmt.Printf("ID: %s | Autor: %s | Réu: %s | Causa: %d | Pedidos: %v\n",
-								a.ID, a.Autor, a.Reu, a.CausaPedir, a.Pedidos)
+							fmt.Printf("ID: %s | Plaintiff: %s | Defendant: %s | Cause: %d | Claims: %v\n",
+								a.ID, a.Plaintiff, a.Defendant, a.CauseAction, a.Claims)
 						}
 					}
-				case "3", "s", "S":
-					ext := vs.GetExtSemMerito()
+				case "3", "o", "O":
+					ext := ts.GetDisWithoutMerit()
 					if len(ext) == 0 {
-						fmt.Println("(Nenhuma ação extinta sem resolução de mérito)")
+						fmt.Println("(no lawsuits dismissed without merit judgment)")
 					} else {
-						fmt.Println("\n--- AÇÕES EXTINTAS SEM RESOLUÇÃO DE MÉRITO ---")
+						fmt.Println("\n--- LAWSUITS DISMISSED WITHOUT MERIT JUDGMENT ---")
 						for _, a := range ext {
-							fmt.Printf("ID: %s | Autor: %s | Réu: %s | Causa: %d | Pedidos: %v\n",
-								a.ID, a.Autor, a.Reu, a.CausaPedir, a.Pedidos)
+							fmt.Printf("ID: %s | Plaintiff: %s | Defendant: %s | Cause: %d | Claims: %v\n",
+								a.ID, a.Plaintiff, a.Defendant, a.CauseAction, a.Claims)
 						}
 					}
-				case "4", "r", "R":
-					ativas := vs.GetAtivas()
-					encontrou := false
-					fmt.Println("\n--- AÇÕES REUNIDAS (CONEXAS) ---")
-					for _, a := range ativas {
-						if len(a.Conexas) > 0 {
-							encontrou = true
-							fmt.Printf("ID: %s | Autor: %s | Réu: %s | Causa: %d | Pedidos: %v | Conexas: %v\n",
-								a.ID, a.Autor, a.Reu, a.CausaPedir, a.Pedidos, a.Conexas)
+				case "4", "g", "G":
+					actives := ts.GetActives()
+					found := false
+					fmt.Println("\n--- GATHERED LAWSUITS (CONNECTED) ---")
+					for _, a := range actives {
+						if len(a.Connected) > 0 {
+							found = true
+							fmt.Printf("ID: %s | Plaintiff: %s | Defendant: %s | Cause: %d | Claims: %v | Connected: %v\n",
+								a.ID, a.Plaintiff, a.Defendant, a.CauseAction, a.Claims, a.Connected)
 						}
 					}
-					if !encontrou {
-						fmt.Println("(Nenhuma ação reunida/conexa cadastrada)")
+					if !found {
+						fmt.Println("(No gathered/connected lawsuit is registered)")
 					}
 				default:
-					fmt.Println("Opção inválida no submenu de listagem.")
+					fmt.Println("Invalid option in the list submenu.")
 				}
 
-				fmt.Print("\nPressione ENTER para voltar ao submenu de listagem...")
+				fmt.Print("\nPress ENTER to return to the list submenu...")
 				reader.ReadString('\n')
 				clearScreen()
 			}
 
 		case "2", "f", "F":
-			// Finalizar ação
-			fmt.Print("Informe o ID da ação a ser finalizada: ")
+			// Finish lawsuit
+			fmt.Print("ID for the lawsuit that will be finished: ")
 			idStr, _ := reader.ReadString('\n')
 			idStr = strings.TrimSpace(idStr)
 			if idStr == "" {
-				fmt.Println("ID vazio. Operação cancelada.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Println("Empty ID. Operation cancelled.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			fmt.Print("Finalizar COM resolução de mérito? (s/n): ")
+			fmt.Print("Finish lawsuit WITH merit judgment? (y/n): ")
 			respStr, _ := reader.ReadString('\n')
 			respStr = strings.TrimSpace(strings.ToLower(respStr))
 
 			switch respStr {
-			case "s", "sim":
-				a, err := vs.ExtinguirComMerito(idStr)
+			case "y", "yes", "Y", "Yes" :
+				a, err := ts.DismissWithMerit(idStr)
 				if err != nil {
-					fmt.Println("Erro ao finalizar ação com resolução de mérito:", err)
+					fmt.Println("Error while finishing the lawsuit with merit judgment:", err)
 				} else {
-					fmt.Printf("Ação %s finalizada COM resolução de mérito.\n", a.ID)
+					fmt.Printf("Lawsuit %s finished WITH merit judgment.\n", a.ID)
 				}
-			case "n", "nao", "não":
-				a, err := vs.ExtinguirSemMerito(idStr)
+			case "n", "no", "not", "N", "Not":
+				a, err := ts.DismissWithoutmerit(idStr)
 				if err != nil {
-					fmt.Println("Erro ao finalizar ação sem resolução de mérito:", err)
+					fmt.Println("Error while finishing lawsuit without merit judgment:", err)
 				} else {
-					fmt.Printf("Ação %s finalizada SEM resolução de mérito.\n", a.ID)
+					fmt.Printf("Lawsuit %s finished WITHOUT merit judgment.\n", a.ID)
 				}
 			default:
 				fmt.Println("Resposta inválida. Use 's' para sim ou 'n' para não. Operação cancelada.")
+				fmt.Println("Invalid response. Use 'y' to yes or 'n' to no. Cancelled operation.")
 			}
 
-		case "3", "b", "B":
-			// Buscar ação
+		case "3", "s", "S":
+			// Search lawsuit 
 			clearScreen()
-			fmt.Println("\nBuscar por:")
-			fmt.Println("1 (I) - ID da ação")
-			fmt.Println("2 (A) - Autor")
-			fmt.Println("3 (R) - Réu")
-			fmt.Println("4 (C) - Causa de pedir (número exato)")
-			fmt.Println("5 (P) - Pedido (número exato)")
-			fmt.Println("6 (S) - Retorna ao menu")
-			fmt.Print("Sua opção> ")
-			campoStr, _ := reader.ReadString('\n')
-			campoStr = strings.TrimSpace(campoStr)
+			fmt.Println("\nSearch for:")
+			fmt.Println("1 (I) - Lawsuit ID")
+			fmt.Println("2 (P) - Plaintiff")
+			fmt.Println("3 (D) - Defendant")
+			fmt.Println("4 (C) - Cause of action (integer)")
+			fmt.Println("5 (M) - Claim (integer)")
+			fmt.Println("6 (R) - Return to menu")
+			fmt.Print("Your option> ")
+			fieldStr, _ := reader.ReadString('\n')
+			fieldStr = strings.TrimSpace(fieldStr)
 
-			var campo string
-			switch campoStr {
+			var field string
+			switch fieldStr {
 			case "1", "i", "I":
-				campo = "id"
-			case "2", "a", "A":
-				campo = "autor"
-			case "3", "r", "R":
-				campo = "reu"
+				field = "id"
+			case "2", "p", "P":
+				field = "plaintiff"
+			case "3", "d", "D":
+				field = "defendant"
 			case "4", "c", "C":
-				campo = "causa"
-			case "5", "p", "P":
-				campo = "pedido"
-			case "6", "s", "S":
+				field = "cause"
+			case "5", "m", "M":
+				field = "claim"
+			case "6", "r", "R":
 				clearScreen()
 				continue
 			default:
-				fmt.Println("\nOpção de campo inválida.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Println("\nInvalid field option.")
+				fmt.Print("\nPress ENTER to return ao menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			fmt.Print("Valor para busca> ")
+			fmt.Print("Search value> ")
 			val, _ := reader.ReadString('\n')
 			val = strings.TrimSpace(val)
 			if val == "" {
-				fmt.Println("\nValor de busca vazio.")
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Println("\nEmptyh search value.")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			resultados, err := vs.BuscarAcoes(campo, val)
+			results, err := ts.SearchLawsuits(field, val)
 			if err != nil {
-				fmt.Println("\nErro na busca:", err)
-			} else if len(resultados) == 0 {
-				fmt.Println("\nNenhuma ação encontrada.")
+				fmt.Println("\nError in the search:", err)
+			} else if len(results) == 0 {
+				fmt.Println("\nNo lawsuit found.")
 			} else {
-				fmt.Println("\n--- RESULTADOS DA BUSCA ---")
-				for _, r := range resultados {
-					a := r.Acao
-					fmt.Printf("[%s] ID: %s | Autor: %s | Réu: %s | Causa: %d | Pedidos: %v\n",
-						r.Lista, a.ID, a.Autor, a.Reu, a.CausaPedir, a.Pedidos)
+				fmt.Println("\n--- SEARCH RESULTS ---")
+				for _, r := range results {
+					a := r.Lawsuit
+					fmt.Printf("[%s] ID: %s | Plaintiff: %s | Defendant: %s | Cause: %d | Claims: %v\n",
+						r.List, a.ID, a.Plaintiff, a.Defendant, a.CauseAction, a.Claims)
 				}
 			}
 
-		case "4", "s", "S":
-			if err := vs.Save(); err != nil {
-				log.Printf("\nErro ao salvar ações ao sair: %v", err)
+		case "4", "q", "Q":
+			if err := ts.Save(); err != nil {
+				log.Printf("\nError while saving lawsuits during quit: %v", err)
 			}
-			fmt.Println("\nDados salvos. Encerrando vara.")
-			sair <- true
+			fmt.Println("\nData saved. Finishing the trial.")
+			quit <- true
 			return
 
 		default:
-			fmt.Println("\nOpção inválida.")
+			fmt.Println("\nInvalid option.")
 		}
 
-		// Pausa geral antes de voltar ao menu
-		fmt.Print("\nPressione ENTER para voltar ao menu...")
+		// General pause before returning to menu
+		fmt.Print("\nPress ENTER to return to menu...")
 		reader.ReadString('\n')
 		clearScreen()
 	}
@@ -1443,131 +1441,138 @@ func iniciarMenu(vs *VaraStore, sair chan bool) {
 
 // ---------- MAIN ----------
 func main() {
-	helpFlag := flag.Bool("h", false, "Mostrar help")
-	comarcaAddrFlag := flag.String("comarca", "", "Endereço UDP da comarca desta vara")
-	varaIDFlag := flag.Int("id", 0, "ID numérico desta vara (1, 2, 3, ...)")
-	logFlag := flag.String("log", "", "Arquivo de log (ou 'term' para log no terminal; default: vara.log)")
-	acoesFile := flag.String("acoes", "acoes.json", "Arquivo JSON com o estado das ações da vara")
+	helpFlag := flag.Bool("h", false, "Show help")
+	infoFlag := flag.Bool("info", false, "Show information about option flags")
+	districtAddrFlag := flag.String("district", "", "District's UDP address for this trial")
+	trialIDFlag := flag.Int("id", 0, "Numeric ID for the trial (1, 2, 3, ...)")
+	logFlag := flag.String("log", "", "Log file (or 'term' to log to terminal; default: trial.log)")
+	lawsuitsFile := flag.String("lawsuits", "lawsuits.json", "JSON file  with the states for the trial's lawsuits")
 	flag.Parse()
 
-	// Configuração de LOG
+	if *helpFlag {
+		fmt.Println("Program used to simulate the functioning of a civel trial,")
+		fmt.Println("with lists of actives and dismissed lawsuits (with and without merit judgment)")
+		fmt.Println("and responding the distribution requests (res judicata, lis pendens, etc.).")
+		fmt.Println("\n Release: ",Release)
+		fmt.Println()
+		fmt.Println("Usage: trial [-h] [-info] -district <district's UDP address> [-id <id_trial>]")
+		fmt.Println("            [-log <file_name|term>] [-lawsuits <json_file>]")
+		fmt.Println()
+		fmt.Println("The trial's UDP address is get from the district (and mirrored on disc).")
+		return
+	}
+
+	// Uses -info as the default behavior for -h
+	if *infoFlag {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	// LOG configuration
 	if *logFlag == "" {
-		logFile, err := os.OpenFile("vara.log",
+		logFile, err := os.OpenFile("trial.log",
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			fmt.Println("Erro ao abrir arquivo de log padrão (vara.log):", err)
+			fmt.Println("Error while opening default log file (trial.log):", err)
 		} else {
 			log.SetOutput(logFile)
 		}
 	} else if *logFlag == "term" {
-		// mantém saída padrão (stderr)
+		// default output (stderr)
 	} else {
 		logFile, err := os.OpenFile(*logFlag,
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			fmt.Println("Erro ao abrir arquivo de log:", err)
+			fmt.Println("Error while opening log file:", err)
 		} else {
 			log.SetOutput(logFile)
 		}
 	}
 
-	if *helpFlag {
-		fmt.Println("Programa utilizado para simular o funcionamento de uma Vara Cível,")
-		fmt.Println("mantendo listas de ações ativas e extintas (com e sem resolução de mérito)")
-		fmt.Println("e respondendo a consultas de distribuição (coisa julgada, litispendência, etc.).")
-		fmt.Println("Release: ",Release)
-		fmt.Println()
-		fmt.Println("Usage: vara [-h] [-info] -comarca <endereco UDP comarca> [-id <id_vara>]")
-		fmt.Println("            [-log <arquivo|term>] [-acoes <arquivo_json>]")
-		fmt.Println()
-		fmt.Println("O endereço UDP da vara é obtido da comarca (e espelhado em disco).")
-		return
+	// Load the state (local mirror)
+	ts := NewTrialStore(*lawsuitsFile)
+	if err := ts.Load(); err != nil {
+		fmt.Println("Error while loading lawsuits from disc:", err)
 	}
 
-	// Carrega estado (espelho local)
-	vs := NovaVaraStore(*acoesFile)
-	if err := vs.Load(); err != nil {
-		fmt.Println("Erro ao carregar ações do disco:", err)
-	}
-
-	// Resolver endereço da comarca: flag -> arquivo
-	comarcaAddr := strings.TrimSpace(*comarcaAddrFlag)
-	if comarcaAddr == "" {
-		comarcaAddr = carregarEnderecoComarca(comarcaAddrFile)
+	// Resolve district's address: flag -> file
+	districtAddr := strings.TrimSpace(*districtAddrFlag)
+	if districtAddr == "" {
+		districtAddr = loadDistrictAddress(districtAddrFile)
 	} else {
-		atual := carregarEnderecoComarca(comarcaAddrFile)
-		if comarcaAddr != atual {
-			salvarEnderecoComarca(comarcaAddrFile, comarcaAddr)
+		actual := loadDistrictAddress(districtAddrFile)
+		if districtAddr != actual {
+			saveDistrictAddress(districtAddrFile, districtAddr)
 		}
 	}
 
-	if comarcaAddr == "" {
-		fmt.Println("Erro: não foi possível determinar o endereço UDP da comarca (use -comarca ou configure", comarcaAddrFile, ").")
+	if districtAddr == "" {
+		fmt.Println("Error: it was not possible to determine the district's UDP address (use -district or configure", districtAddrFile, ").")
 		return
 	}
 
-	// Determinar VaraID: flag -> espelho
-	varaID := *varaIDFlag
-	if varaID <= 0 {
-		_, storedVaraID := vs.GetIDs()
-		varaID = storedVaraID
+	// Determine TrialID: flag -> mirror
+	trialID := *trialIDFlag
+	if trialID <= 0 {
+		_, storedTrialID := ts.GetIDs()
+		trialID = storedTrialID
 	}
 
-	if varaID <= 0 {
-		fmt.Println("Erro: é necessário informar o ID da vara (via -id ou já ter um ID salvo em disco).")
+	if trialID <= 0 {
+		fmt.Println("Error: it is necessary to inform the trial's ID (-id or already have an ID saved on disc).")
 		return
 	}
 
-	// Atualiza espelho com VaraID informado (sem mexer em outras coisas)
-	_ = vs.UpdateInfo(0, "", varaID, "")
+	// Update the mirror with given TrialID (without modifying other things)
+	_ = ts.UpdateInfo(0, "", trialID, "")
 
-	// Handshake com a comarca para obter ComarcaID, ComarcaNome, VaraAddr
-	obterInfoDaComarca(comarcaAddr, varaID, vs)
+	// Handshake wht the district to get DistrictID, DistrictName, TrialAddr
+	getInfoFromDistrict(districtAddr, trialID, ts)
 
-	// Endereço final da vara: o que está no espelho (pode ter vindo da comarca ou de execução anterior)
-	udpAddr := vs.GetVaraAddr()
+	// Trial's final address: the one that is in the mirror (from the district or from previous execution)
+	udpAddr := ts.GetTrialAddr()
 	if udpAddr == "" {
-		fmt.Println("Erro: não foi possível determinar o endereço UDP desta vara a partir da comarca nem do espelho local.")
+		fmt.Println("Error: it was not possible to determine the trial's UDP address from the district or from the local mirror.")
 		return
 	}
 
-	comarcaID, finalVaraID := vs.GetIDs()
-	comarcaNome := vs.GetComarcaNome()
-	log.Printf("Inicializando VARA: ComarcaID=%d, ComarcaNome=%q, VaraID=%d, VaraAddr=%s, ComarcaAddr=%s",
-		comarcaID, comarcaNome, finalVaraID, udpAddr, comarcaAddr)
+	districtID, finalTrialID := ts.GetIDs()
+	districtName := ts.GetDistrictName()
+	log.Printf("Initialization for TRIAL: DistrictID=%d, DistrictName=%q, TrialID=%d, TrialAddr=%s, DistrictAddr=%s",
+		districtID, districtName, finalTrialID, udpAddr, districtAddr)
 
 	clearScreen()
 	time.Sleep(100 * time.Millisecond)
 	clearScreen()
-	fmt.Printf("Inicializando VARA: ComarcaID=%d, ComarcaNome=%q, VaraID=%d, VaraAddr=%s, ComarcaAddr=%s",
-		comarcaID, comarcaNome, finalVaraID, udpAddr, comarcaAddr)
+	fmt.Printf("initialization for TRIAL: DistrictID=%d, DistrictName=%q, TrialID=%d, TrialAddr=%s, DistrictAddr=%s",
+		districtID, districtName, finalTrialID, udpAddr, districtAddr)
 	time.Sleep(2000 * time.Millisecond)
 	clearScreen()
 
-	sair := make(chan bool)
-	go iniciarMenu(vs, sair)
+	quit := make(chan bool)
+	go startMenu(ts, quit)
 
-	// Servidor UDP
+	// UDP server
 	conn, err := net.ListenPacket("udp", udpAddr)
 	if err != nil {
-		fmt.Println("Erro ao abrir UDP:", err)
+		fmt.Println("Error while opening UDP:", err)
 		return
 	}
 	defer conn.Close()
 
-	if comarcaNome != "" {
-		log.Printf("Servidor de vara rodando em %s (%dª Vara, Comarca: %s, ID Comarca=%d) - comarca em %s\n",
-			udpAddr, finalVaraID, comarcaNome, comarcaID, comarcaAddr)
+	if districtName != "" {
+		log.Printf("Trial server running on %s (Trial %d, District: %s, ID District=%d) - district on %s\n",
+			udpAddr, finalTrialID, districtName, districtID, districtAddr)
 	} else {
-		log.Printf("Servidor de vara rodando em %s (ComarcaID=%d, VaraID=%d) - comarca em %s\n",
-			udpAddr, comarcaID, finalVaraID, comarcaAddr)
+		log.Printf("Trial server running on %s (DistrictID=%d, TrialID=%d) - district on %s\n",
+			udpAddr, districtID, finalTrialID, districtAddr)
 	}
 
 	buf := make([]byte, 4096)
 
 	for {
 		select {
-		case <-sair:
+		case <-quit:
 			return
 		default:
 			_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
@@ -1576,14 +1581,14 @@ func main() {
 				if ne, ok := err.(net.Error); ok && ne.Timeout() {
 					continue
 				}
-				log.Printf("Erro ao ler pacote UDP: %v", err)
+				log.Printf("Error while reading UDP package: %v", err)
 				continue
 			}
 
 			data := make([]byte, n)
 			copy(data, buf[:n])
 
-			go handlePacket(conn, addr, data, vs)
+			go handlePacket(conn, addr, data, ts)
 		}
 	}
 }

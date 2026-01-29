@@ -1,23 +1,19 @@
 /***************************************************************************
-	CSC-27 / CE-288 - ITA - 2025, 2º sem. - Profs. Hirata and Juliana
+	Distributed Architecture for Judiciary Processes Distribution
+	===== Court Agent ====
 
-	LabExam - Simulador de Tribunal de Justiça Descentralizado
-
-	Students: 
+	Authors: 
 	        Antonio Gilberto de Moura (A - AGM)
-			Fernado Maurício Gomes (F - FMG)
-			Rodrigo Freire dos Santos Alencar (R - RFA)
+		Fernado Maurício Gomes (F - FMG)
 
-        Rel 1.0.0
-
-        Copyright (c) 2025 by A/F/R.
-        All Rights Reserved.
+        Rel 1.1.0
 
 
-Revision History for tribunal.go:
+Revision History for court.go:
 
    Release   Author   Date           Description
-    1.0.0    A/F/R    19/NOV/2025    Initial stable release
+    1.0.0    A/F      19/Nov/2025    Initial stable release
+    1.1.0    A        28/Jan/2026    Translation to English
 
 ***************************************************************************/
 
@@ -40,40 +36,40 @@ import (
 	"os/exec"
 )
 
-// Identificação da release
-const Release = "1.0.0"
+// Release identification
+const Release = "1.1.0" // Translation to English
 
 
-// ---------- Estruturas de dados ----------
+// ---------- Data Structures ----------
 
-type Comarca struct {
+type District struct {
 	ID       int    `json:"id"`
-	Nome     string `json:"nome"`
-	Endereco string `json:"endereco"`
-	Varas    int    `json:"varas"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Trials   int    `json:"trials"`
 }
 
-type ComarcaList struct {
+type DistrictList struct {
 	mu      sync.RWMutex
-	Itens   []Comarca
+	Items   []District
 	arqPath string
 }
 
 
-// ---------- Funções ----------
+// ---------- Functions ----------
 
-func NovaComarcaList(arqPath string) *ComarcaList {
-	return &ComarcaList{
-		Itens:   make([]Comarca, 0),
+func NewDistrictList(arqPath string) *DistrictList {
+	return &DistrictList{
+		Items:   make([]District, 0),
 		arqPath: arqPath,
 	}
 }
 
-func (cl *ComarcaList) Load() error {
-	cl.mu.Lock()
-	defer cl.mu.Unlock()
+func (dl *DistrictList) Load() error {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
 
-	f, err := os.Open(cl.arqPath)
+	f, err := os.Open(dl.arqPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -83,19 +79,19 @@ func (cl *ComarcaList) Load() error {
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
-	var itens []Comarca
-	if err := dec.Decode(&itens); err != nil {
+	var items []District
+	if err := dec.Decode(&items); err != nil {
 		return err
 	}
-	cl.Itens = itens
+	dl.Items = items
 	return nil
 }
 
-func (cl *ComarcaList) Save() error {
-	cl.mu.RLock()
-	defer cl.mu.RUnlock()
+func (dl *DistrictList) Save() error {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
 
-	tmp := cl.arqPath + ".tmp"
+	tmp := dl.arqPath + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
 		return err
@@ -104,7 +100,7 @@ func (cl *ComarcaList) Save() error {
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 
-	if err := enc.Encode(cl.Itens); err != nil {
+	if err := enc.Encode(dl.Items); err != nil {
 		f.Close()
 		return err
 	}
@@ -112,189 +108,189 @@ func (cl *ComarcaList) Save() error {
 		return err
 	}
 
-	return os.Rename(tmp, cl.arqPath)
+	return os.Rename(tmp, dl.arqPath)
 }
 
-// gera próximo ID de comarca com base no maior ID existente
-func (cl *ComarcaList) nextID() int {
+// Generate the next district ID based in the greater ID already existent
+func (dl *DistrictList) nextID() int {
 	max := 0
-	for _, c := range cl.Itens {
-		if c.ID > max {
-			max = c.ID
+	for _, d := range dl.Items {
+		if d.ID > max {
+			max = d.ID
 		}
 	}
 	return max + 1
 }
 
-// Agora Add gera e devolve a comarca com ID definido
-func (cl *ComarcaList) Add(c Comarca) (Comarca, error) {
-	cl.mu.Lock()
-	if c.ID == 0 {
-		c.ID = cl.nextID()
+// Add generates and returns a district with ID defined
+func (dl *DistrictList) Add(d District) (District, error) {
+	dl.mu.Lock()
+	if d.ID == 0 {
+		d.ID = dl.nextID()
 	}
-	cl.Itens = append(cl.Itens, c)
-	cl.mu.Unlock()
+	dl.Items = append(dl.Items, d)
+	dl.mu.Unlock()
 
-	if err := cl.Save(); err != nil {
-		return Comarca{}, err
+	if err := dl.Save(); err != nil {
+		return District{}, err
 	}
-	return c, nil
+	return d, nil
 }
 
-func (cl *ComarcaList) RemoveByName(name string) (*Comarca, error) {
-	cl.mu.Lock()
+func (dl *DistrictList) RemoveByName(name string) (*District, error) {
+	dl.mu.Lock()
 	idx := -1
-	var removed Comarca
-	for i, c := range cl.Itens {
-		if c.Nome == name {
+	var removed District 
+	for i, d := range dl.Items {
+		if d.Name == name {
 			idx = i
-			removed = c
+			removed = d
 			break
 		}
 	}
 	if idx == -1 {
-		cl.mu.Unlock()
-		return nil, errors.New("comarca não encontrada")
+		dl.mu.Unlock()
+		return nil, errors.New("district not found")
 	}
-	cl.Itens = append(cl.Itens[:idx], cl.Itens[idx+1:]...)
-	cl.mu.Unlock()
+	dl.Items = append(dl.Items[:idx], dl.Items[idx+1:]...)
+	dl.mu.Unlock()
 
-	if err := cl.Save(); err != nil {
+	if err := dl.Save(); err != nil {
 		return nil, err
 	}
 	return &removed, nil
 }
 
-func (cl *ComarcaList) UpdateVaras(name string, varas int) (*Comarca, error) {
-	cl.mu.Lock()
+func (dl *DistrictList) UpdateTrials(name string, trials int) (*District, error) {
+	dl.mu.Lock()
 	idx := -1
-	for i, c := range cl.Itens {
-		if c.Nome == name {
-			cl.Itens[i].Varas = varas
+	for i, d := range dl.Items {
+		if d.Name == name {
+			dl.Items[i].Trials = trials 
 			idx = i
 			break
 		}
 	}
 	if idx == -1 {
-		cl.mu.Unlock()
-		return nil, errors.New("comarca não encontrada")
+		dl.mu.Unlock()
+		return nil, errors.New("district not found")
 	}
-	updated := cl.Itens[idx]
-	cl.mu.Unlock()
+	updated := dl.Items[idx]
+	dl.mu.Unlock()
 
-	if err := cl.Save(); err != nil {
+	if err := dl.Save(); err != nil {
 		return nil, err
 	}
 	return &updated, nil
 }
 
-func (cl *ComarcaList) GetByName(name string) *Comarca {
-	cl.mu.RLock()
-	defer cl.mu.RUnlock()
+func (dl *DistrictList) GetByName(name string) *District {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
 
-	for _, c := range cl.Itens {
-		if c.Nome == name {
-			cp := c
-			return &cp
+	for _, d := range dl.Items {
+		if d.Name == name {
+			dp := d
+			return &dp
 		}
 	}
 	return nil
 }
 
-func (cl *ComarcaList) ListExcept(addr string) []Comarca {
-	cl.mu.RLock()
-	defer cl.mu.RUnlock()
+func (dl *DistrictList) ListExcept(addr string) []District {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
 
-	res := make([]Comarca, 0, len(cl.Itens))
-	for _, c := range cl.Itens {
-		if c.Endereco != addr {
-			res = append(res, c)
+	res := make([]District, 0, len(dl.Items))
+	for _, d := range dl.Items {
+		if d.Address != addr {
+			res = append(res, d)
 		}
 	}
 	return res
 }
 
 
-// ---------- Protocolo UDP ----------
+// ---------- UDP Protocol ----------
 
 type Request struct {
-	Type  string `json:"type"`
-	Nome  string `json:"nome,omitempty"`
-	Varas int    `json:"varas,omitempty"`
+	Type   string `json:"type"`
+	Name   string `json:"name,omitempty"`
+	Trials int    `json:"trials,omitempty"`
 }
 
 type Response struct {
-	Success  bool      `json:"success"`
-	Message  string    `json:"message"`
-	Comarca  *Comarca  `json:"comarca,omitempty"`
-	Comarcas []Comarca `json:"comarcas,omitempty"`
+	Success  bool        `json:"success"`
+	Message  string      `json:"message"`
+	District *District   `json:"district,omitempty"`
+	Districts []District `json:"districts,omitempty"`
 }
 
-func handlePacket(conn net.PacketConn, addr net.Addr, data []byte, cl *ComarcaList) {
-	log.Printf("[REQ] %s - pacote recebido de %s (%d bytes)",
+func handlePacket(conn net.PacketConn, addr net.Addr, data []byte, dl *DistrictList) {
+	log.Printf("[REQ] %s - package received from %s (%d bytes)",
 		time.Now().Format(time.RFC3339), addr.String(), len(data))
 
 	var req Request
 	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("[ERR] %s - erro ao decodificar requisição de %s: %v",
+		log.Printf("[ERR] %s - error for requisition decodification from %s: %v",
 			time.Now().Format(time.RFC3339), addr.String(), err)
-		sendResponse(conn, addr, Response{false, "erro ao decodificar requisição", nil, nil})
+		sendResponse(conn, addr, Response{false, "error for requisition decodification", nil, nil})
 		return
 	}
 
-	log.Printf("[REQ] %s - de %s: type=%q nome=%q varas=%d",
-		time.Now().Format(time.RFC3339), addr.String(), req.Type, req.Nome, req.Varas)
+	log.Printf("[REQ] %s - from %s: type=%q name=%q trials=%d",
+		time.Now().Format(time.RFC3339), addr.String(), req.Type, req.Name, req.Trials)
 
 	switch req.Type {
 
 	case "list":
-		comarcas := cl.ListExcept(addr.String())
-		sendResponse(conn, addr, Response{true, "ok", nil, comarcas})
+		districts := dl.ListExcept(addr.String())
+		sendResponse(conn, addr, Response{true, "ok", nil, districts})
 
 	case "create":
-		if req.Nome == "" || req.Varas <= 0 {
-			sendResponse(conn, addr, Response{false, "campos 'nome' e 'varas' obrigatórios", nil, nil})
+		if req.Name == "" || req.Trials <= 0 {
+			sendResponse(conn, addr, Response{false, "fields 'name' and 'trials' are required", nil, nil})
 			return
 		}
-		existing := cl.GetByName(req.Nome)
+		existing := dl.GetByName(req.Name)
 		if existing != nil {
-			sendResponse(conn, addr, Response{true, "comarca já existente", existing, nil})
+			sendResponse(conn, addr, Response{true, "district already existent", existing, nil})
 			return
 		}
-		nova := Comarca{Nome: req.Nome, Endereco: addr.String(), Varas: req.Varas}
-		nova, err := cl.Add(nova)
+		new_d := District{Name: req.Name, Address : addr.String(), Trials: req.Trials}
+		new_d, err := dl.Add(new_d)
 		if err != nil {
 			sendResponse(conn, addr, Response{false, err.Error(), nil, nil})
 			return
 		}
-		sendResponse(conn, addr, Response{true, "comarca criada", &nova, nil})
+		sendResponse(conn, addr, Response{true, "district created", &new_d, nil})
 
 	case "remove":
-		if req.Nome == "" {
-			sendResponse(conn, addr, Response{false, "campo 'nome' obrigatório", nil, nil})
+		if req.Name == "" {
+			sendResponse(conn, addr, Response{false, "field 'name' is required", nil, nil})
 			return
 		}
-		removed, err := cl.RemoveByName(req.Nome)
+		removed, err := dl.RemoveByName(req.Name)
 		if err != nil {
 			sendResponse(conn, addr, Response{false, err.Error(), nil, nil})
 			return
 		}
-		sendResponse(conn, addr, Response{true, "comarca removida", removed, nil})
+		sendResponse(conn, addr, Response{true, "district removed", removed, nil})
 
-	case "update_varas":
-		if req.Nome == "" {
-			sendResponse(conn, addr, Response{false, "campo 'nome' obrigatório", nil, nil})
+	case "update_trials":
+		if req.Name == "" {
+			sendResponse(conn, addr, Response{false, "field 'name' is required", nil, nil})
 			return
 		}
-		updated, err := cl.UpdateVaras(req.Nome, req.Varas)
+		updated, err := dl.UpdateTrials(req.Name, req.Trials)
 		if err != nil {
 			sendResponse(conn, addr, Response{false, err.Error(), nil, nil})
 			return
 		}
-		sendResponse(conn, addr, Response{true, "número de varas atualizado", updated, nil})
+		sendResponse(conn, addr, Response{true, "trials number updated", updated, nil})
 
 	default:
-		sendResponse(conn, addr, Response{false, "tipo de requisição desconhecido", nil, nil})
+		sendResponse(conn, addr, Response{false, "unknown type of request", nil, nil})
 	}
 }
 
@@ -305,17 +301,17 @@ func sendResponse(conn net.PacketConn, addr net.Addr, resp Response) {
 	}
 	conn.WriteTo(b, addr)
 
-	log.Printf("[RESP] %s - para %s: success=%v msg=%q comarcas=%d",
+	log.Printf("[RESP] %s - to %s: success=%v msg=%q districts=%d",
 		time.Now().Format(time.RFC3339), addr.String(),
-		resp.Success, resp.Message, len(resp.Comarcas))
+		resp.Success, resp.Message, len(resp.Districts))
 }
 
 
-// ---------- Utilitário: limpar tela ----------
+// ---------- Clear the screen ----------
 func clearScreen() {
         switch runtime.GOOS {
         case "windows":
-                // Para cmd / PowerShell
+                // For cmd / PowerShell
                 cmd := exec.Command("cmd", "/c", "cls")
                 cmd.Stdout = os.Stdout
                 _ = cmd.Run()
@@ -324,112 +320,112 @@ func clearScreen() {
                 cmd := exec.Command("clear")
                 cmd.Stdout = os.Stdout
                 if err := cmd.Run(); err != nil {
-                        // Se der erro, cai pro escape ANSI
+                        // If error, goes to ANSI scape
                         fmt.Print("\033[2J\033[H")
                 }
         }
 }
 
 
-// ---------- Menu via teclado ----------
-func iniciarMenu(cl *ComarcaList, sair chan bool) {
+// ---------- Menu throught keyboard ----------
+func startMenu(dl *DistrictList, quit chan bool) {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		fmt.Println()
-		fmt.Println("========== TRIBUNAL ==========")
-		fmt.Println("1 (L) - Apresentar lista de comarcas")
-		fmt.Println("2 (A) - Adicionar nova comarca")
-		fmt.Println("3 (D) - Remover comarca")
-		fmt.Println("4 (S) - Sair")
-		fmt.Println("5 (R) - Refresh (limpar tela)")
-		fmt.Print("Sua opção> ")
+		fmt.Println() 
+		fmt.Println("========== COURT OF JUSTICE ==========")
+		fmt.Println("1 (L) - Show districts list")
+		fmt.Println("2 (A) - Add a new district")
+		fmt.Println("3 (D) - Delete a district")
+		fmt.Println("4 (Q) - Quit")
+		fmt.Println("5 (R) - Refresh (clear the screen)")
+		fmt.Print("Your option> ")
 
-		linha, _ := reader.ReadString('\n')
-		opc := strings.TrimSpace(linha)
+		line, _ := reader.ReadString('\n')
+		opt := strings.TrimSpace(line)
 
-		switch opc {
+		switch opt {
 
 		case "5","r", "R":
 			clearScreen()
 			continue
 
 		case "1","l","L":
-			cl.mu.RLock()
-			fmt.Println("\n--- COMARCAS ---")
-			if len(cl.Itens) == 0 {
-				fmt.Println("(lista vazia)")
+			dl.mu.RLock()
+			fmt.Println("\n--- DISTRICTS ---")
+			if len(dl.Items) == 0 {
+				fmt.Println("(empty list)")
 			} else {
-				for _, c := range cl.Itens {
-					fmt.Printf("ID %d | %s | %s | %d varas\n",
-						c.ID, c.Nome, c.Endereco, c.Varas)
+				for _, d := range dl.Items {
+					fmt.Printf("ID %d | %s | %s | %d trials\n",
+						d.ID, d.Name, d.Address, d.Trials)
 				}
 			}
-			cl.mu.RUnlock()
+			dl.mu.RUnlock()
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
 		case "2", "a", "A":
-			fmt.Print("Nome da comarca: ")
-			nome, _ := reader.ReadString('\n')
-			nome = strings.TrimSpace(nome)
+			fmt.Print("District's name: ")
+			name, _ := reader.ReadString('\n')
+			name = strings.TrimSpace(name)
 
-			fmt.Print("Endereço UDP da comarca: ")
-			end, _ := reader.ReadString('\n')
-			end = strings.TrimSpace(end)
+			fmt.Print("District's UDP address: ")
+			add, _ := reader.ReadString('\n')
+			add = strings.TrimSpace(add)
 
-			fmt.Print("Número de varas: ")
-			vs, _ := reader.ReadString('\n')
-			vs = strings.TrimSpace(vs)
-			varas, err := strconv.Atoi(vs)
-			if err != nil || varas < 0 {
-				fmt.Println("Número de varas inválido.")
+			fmt.Print("Number of trials: ")
+			ts, _ := reader.ReadString('\n')
+			ts = strings.TrimSpace(ts)
+			trials, err := strconv.Atoi(ts)
+			if err != nil || trials < 0 {
+				fmt.Println("Invalid number of trials.")
 
-				fmt.Print("\nPressione ENTER para voltar ao menu...")
+				fmt.Print("\nPress ENTER to return to menu...")
 				reader.ReadString('\n')
 				clearScreen()
 				continue
 			}
 
-			c := Comarca{Nome: nome, Endereco: end, Varas: varas}
-			c, err = cl.Add(c)
+			d := District{Name: name, Address: add, Trials: trials}
+			d, err = dl.Add(d)
 			if err != nil {
-				fmt.Println("Erro:", err)
+				fmt.Println("Error:", err)
 			} else {
-				fmt.Printf("Comarca adicionada: ID %d\n", c.ID)
+				fmt.Printf("District added: ID %d\n", d.ID)
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
 		case "3", "d", "D":
-			fmt.Print("Nome da comarca a remover: ")
-			nome, _ := reader.ReadString('\n')
-			nome = strings.TrimSpace(nome)
-			removed, err := cl.RemoveByName(nome)
+			fmt.Print("Name of the district to be removed: ")
+			name, _ := reader.ReadString('\n')
+			name = strings.TrimSpace(name)
+			removed, err := dl.RemoveByName(name)
 			if err != nil {
-				fmt.Println("Erro:", err)
+				fmt.Println("Error:", err)
 			} else {
-				fmt.Printf("Comarca removida: ID %d | %s\n", removed.ID, removed.Nome)
+				fmt.Printf("District removed: ID %d | %s\n", removed.ID, removed.Name)
 			}
 
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 
-		case "4", "s", "S":
-			if err := cl.Save(); err != nil {
-				fmt.Println("Erro ao salvar ao sair:", err)
+		case "4", "q", "Q":
+			if err := dl.Save(); err != nil {
+				fmt.Println("Saving error:", err)
 			}
-			sair <- true
+			quit <- true
 			return
 
 		default:
-			fmt.Println("Opção inválida.")
-			fmt.Print("\nPressione ENTER para voltar ao menu...")
+			fmt.Println("Invalid Option.")
+			fmt.Print("\nPress ENTER to return to menu...")
 			reader.ReadString('\n')
 			clearScreen()
 		}
@@ -440,38 +436,47 @@ func iniciarMenu(cl *ComarcaList, sair chan bool) {
 // ---------- MAIN ----------
 
 func main() {
-	helpFlag := flag.Bool("h", false, "Mostrar help")
-	addrFlag := flag.String("addr", "", "Endereço UDP do tribunal (default :9000)")
-	logFlag := flag.String("log", "", "Arquivo de log (ou 'term' para log no terminal; default: tribunal.log)")
+	helpFlag := flag.Bool("h", false, "Show help")
+	infoFlag := flag.Bool("info", false, "Show information about option flags")
+	addrFlag := flag.String("addr", "", "Court's UDP address (default :9000)")
+	logFlag := flag.String("log", "", "Log file (or 'term' to log to terminal; default: court.log)")
 	flag.Parse()
 
-	// Configuração de LOG
+	if *helpFlag {
+		fmt.Println("Program used to simulate the decentralization of the procedure for filing")
+		fmt.Println("a new civil lawsuit in one of the existing trials in the various districts")
+	        fmt.Println("of the Court of Justice of the State of São Paulo.")
+		fmt.Println("\n Release:", Release)
+		fmt.Println()
+		fmt.Println("Usage: court [-h] [-info] [-addr <UDP address>] [-log <file|term>]")
+		return
+	}
+
+	// Uses -info as the default behavior for -h
+	if *infoFlag {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	// LOG configuration
 	if *logFlag == "" {
-		logFile, err := os.OpenFile("tribunal.log",
+		logFile, err := os.OpenFile("court.log",
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			fmt.Println("Erro ao abrir arquivo de log padrão (tribunal.log):", err)
+			fmt.Println("Error after trying to open the default log file (court.log):", err)
 		} else {
 			log.SetOutput(logFile)
 		}
 	} else if *logFlag == "term" {
-		// mantém saída padrão (stderr)
+		// default out (stderr)
 	} else {
 		logFile, err := os.OpenFile(*logFlag,
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			fmt.Println("Erro ao abrir arquivo de log:", err)
+			fmt.Println("Error after trying to open the log file:", err)
 		} else {
 			log.SetOutput(logFile)
 		}
-	}
-
-	if *helpFlag {
-		fmt.Println("Programa utilizado para simular a descentralização do procedimento de inserir nova ação cível em uma das varas existentes nas diversas comarcas do Tribunal de Justiça do Estado de São Paulo.")
-		fmt.Println("Release:", Release)
-		fmt.Println()
-		fmt.Println("Usage: tribunal [-h] [-info] [-addr <endereco UDP>] [-log <arquivo|term>]")
-		return
 	}
 
 	udpAddr := ":9000"
@@ -479,24 +484,24 @@ func main() {
 		udpAddr = strings.TrimSpace(*addrFlag)
 	}
 
-	cl := NovaComarcaList("comarcas.json")
-	if err := cl.Load(); err != nil {
-		fmt.Println("Erro ao carregar comarcas do disco:", err)
+	dl := NewDistrictList("districts.json")
+	if err := dl.Load(); err != nil {
+		fmt.Println("Error after trying to load districts list from the disc:", err)
 	}
 
 	clearScreen()
 	time.Sleep(100 * time.Millisecond)
 	clearScreen()
-	fmt.Println("Servidor tribunal rodando em", udpAddr)
+	fmt.Println("Court Server running in", udpAddr)
 	time.Sleep(2000 * time.Millisecond)
 	clearScreen()
 		
-	sair := make(chan bool)
-	go iniciarMenu(cl, sair)
+	quit := make(chan bool)
+	go startMenu(dl, quit)
 
 	conn, err := net.ListenPacket("udp", udpAddr)
 	if err != nil {
-		fmt.Println("Erro ao abrir UDP:", err)
+		fmt.Println("Error after trying to open UDP:", err)
 		return
 	}
 	defer conn.Close()
@@ -505,7 +510,7 @@ func main() {
 
 	for {
 		select {
-		case <-sair:
+		case <-quit:
 			return
 		default:
 			_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
@@ -514,14 +519,14 @@ func main() {
 				if ne, ok := err.(net.Error); ok && ne.Timeout() {
 					continue
 				}
-				log.Printf("Erro ao ler pacote UDP: %v", err)
+				log.Printf("Error after trying to read UDP package: %v", err)
 				continue
 			}
 
 			data := make([]byte, n)
 			copy(data, buf[:n])
 
-			go handlePacket(conn, addr, data, cl)
+			go handlePacket(conn, addr, data, dl)
 		}
 	}
 }
